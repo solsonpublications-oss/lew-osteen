@@ -181,7 +181,7 @@ function CartLine({
             <button
               onClick={() => onQty(item.qty - 1)}
               aria-label="Decrease quantity"
-              className="px-2 py-1 text-gold hover:bg-gold/10 transition-colors"
+              className="press-down px-2 py-1 text-gold hover:bg-gold/10 transition-colors"
             >
               <Minus className="h-3 w-3" />
             </button>
@@ -191,7 +191,7 @@ function CartLine({
             <button
               onClick={() => onQty(item.qty + 1)}
               aria-label="Increase quantity"
-              className="px-2 py-1 text-gold hover:bg-gold/10 transition-colors"
+              className="press-down px-2 py-1 text-gold hover:bg-gold/10 transition-colors"
             >
               <Plus className="h-3 w-3" />
             </button>

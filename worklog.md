@@ -129,3 +129,78 @@ Stage Summary:
 - Full ecommerce flow is live and verified end-to-end in demo mode. The moment real Stripe/PayPal/SMTP/Lulu credentials land in `.env`, every subsystem flips to live with zero code changes.
 - The original Lew Osteen site (Hero, About, Coming Soon, Bookshelf, Footer, all decorative components) is 100% intact — only additive ecommerce hooks were layered on.
 - Ready for production credentials + live payment-element integration (a small next step: swap the "Simulate" button for a real Stripe Payment Element + PayPal SDK buttons once `STRIPE_PUBLISHABLE_KEY` and `PAYPAL_CLIENT_ID` are set).
+
+---
+Task ID: 10 (web dev review cron — round 1)
+Agent: main (Z.ai Code)
+Task: QA pass + bug fixes + new features (Recently Viewed, Order History, Coupon codes) + styling polish.
+
+Work Log:
+
+### QA pass (agent-browser)
+- Loaded the homepage, confirmed the navbar cart button renders with a live count badge.
+- Opened the Bookshelf, opened a book → the Buy Panel (format selector + Add to Cart + Buy Now) renders correctly.
+- Added an item to cart → badge updates, localStorage persists.
+- Identified two UX bugs (fixed below).
+
+### Bug fixes
+1. **LaunchListModal competed with BookDetailModal** — the exit-intent / scroll-triggered launch modal could fire while a visitor was mid-checkout or browsing a book detail modal, stealing focus + overlaying the cart drawer. Fix: added `cartOpen` + `checkoutOpen` subscriptions from the UI store and auto-close the launch modal (with a recorded dismissal) the moment any commerce UI opens. The auto-close runs during render (no setState-in-effect) so it satisfies the lint rule.
+2. **LaunchListModal re-fired every session** — it used `sessionStorage`, so the modal nagged return visitors on every fresh browser session. Fix: switched to `localStorage` with a 7-day cooldown (`DISMISS_COOLDOWN_DAYS = 7`), so a dismissal is respected across sessions.
+3. **Orders route rejected valid country names** — `country` field had a max length of 4 chars (likely a typo for a 2-letter ISO code). Bumped to 60 chars so "United States", "United Kingdom", etc. pass.
+
+### New feature: Recently Viewed Books
+- Created `src/lib/recently-viewed-store.ts` (Zustand + persist to localStorage). Tracks the last 6 books opened, de-duped by slug, newest first. Exposes `track(book)`, `clear()`, `items`, `hydrated`.
+- Hooked tracking into `Bookshelf.tsx` — opening any book in the carousel records it in the recently-viewed store via a new `openBook()` helper.
+- Built `src/components/site/RecentlyViewed.tsx` — a new section that renders below the Bookshelf. Hosts its own `BookDetailModal` instance so the cards are clickable. Gated on the `hydrated` flag (only true after client-side localStorage rehydration) so it never causes SSR/CSR mismatch. Shows a "Clear" button + book count. Empty state: the section hides entirely.
+- Wired into `src/app/page.tsx` between Bookshelf and FeaturedSeries.
+
+### New feature: Order History
+- Created `src/lib/order-history-store.ts` (Zustand + persist). Stores a lightweight, public-facing summary of each order placed from this browser (publicId, items, totals, payment method, buyer email, hasPrint/hasDigital, luluStatus, coupon info). Capped at 50 orders, de-duped by publicId.
+- Extended `src/lib/ui-store.ts` with `orderHistoryOpen` state + open/close/toggle actions.
+- Built `src/components/site/OrderHistoryDialog.tsx` — a full dialog listing every past order. Each row is collapsible; expanding it fetches the live order status from `GET /api/orders/[id]` (so a print order's Lulu status reflects the server truth). Shows the applied coupon + discount, item covers, buyer email, "Resend eBook" mailto link, per-order "Remove" + global "Clear all" buttons. Empty state: "No orders yet — browse the bookshelf".
+- Hooked the order history into `CheckoutDialog.tsx` — every successful order is recorded to history.
+- Added a History icon button to `Navbar.tsx` with a space-blue gradient badge showing the order count (only renders once hydrated + has orders).
+
+### New feature: Coupon / promo codes
+- Created `src/lib/ecommerce/coupons.ts` (server-only) — static list of 4 codes:
+  - `WELCOME10` — 10% off (no minimum)
+  - `NOD15` — 15% off (Pyramids of Nod launch)
+  - `EBOOK5` — $5 off any eBook (min $5)
+  - `READER25` — 25% off (min $30, hidden — shared privately with the newsletter)
+  Each coupon supports percent or fixed discounts, min subtotal, start/expire dates, and max redemptions (in-memory counter).
+- Created `POST /api/checkout/validate-coupon` route — rate-limited, re-validates the cart server-side, returns `{ code, description, discountUSD, discountCents, newTotalCents }`.
+- Updated `POST /api/orders` to re-validate the coupon server-side against the authoritative subtotal (so a client can't tamper with the discount), apply it to the total, record the coupon in the order `notes` field (e.g. "Coupon WELCOME10 applied — saved $1.00 (subtotal $9.99 → total $8.99)"), and return `subtotalCents`, `discountCents`, `couponCode` in the order response.
+- Integrated the coupon UI into the CheckoutDialog InfoStep: input + "Apply" button, applied-coupon card with code/description/discount + remove button, error messages, and a hint line with quick-fill chips for `WELCOME10` + `EBOOK5`. The OrderSummary component now shows Subtotal → Coupon → Total when a coupon is applied. The payment buttons show the discounted amount. The confirmation screen shows the breakdown. The order history entry shows the coupon line.
+
+### Styling polish (micro-interactions + animations)
+- Added 8 new CSS keyframe animations + utility classes to `src/app/globals.css`:
+  - `badge-pop` — the navbar cart badge bounces when the count changes (via `key={cartCount}` to retrigger the animation).
+  - `format-radio-active` — selected format radio gets a gold glow ring.
+  - `check-pulse` — the confirmation checkmark pulses with a gold halo (loops every 2s).
+  - `slide-in-up` — order history rows slide in from below.
+  - `coupon-flash` — the applied-coupon card flashes gold once when first applied.
+  - `recently-card` — recently-viewed cards lift on hover with a soft shadow.
+  - `press-down` — qty stepper buttons depress on click.
+  - `shimmer` — a gold shimmer sweep for loading buttons.
+  - `checkout-sticky-cta` — sticky CTA bar on mobile.
+  - Focus-ring utility for accessibility on all interactive elements.
+
+### End-to-end verification (agent-browser)
+- Cleared localStorage, opened "The Judgement" → Added to Cart → cart badge "1 item".
+- Opened cart drawer → Checkout → filled email `tester@example.com`.
+- Applied coupon `WELCOME10` → toast "Coupon WELCOME10 applied" + OrderSummary now shows Subtotal $9.99 → Coupon WELCOME10 −$1.00 → Total $8.99.
+- Continued to payment → chose Stripe (demo) → button reads "SIMULATE CARD PAYMENT · $8.99" (discounted amount).
+- Completed payment → confirmation screen shows order `LO-9BL59K67` + Subtotal / COUPON WELCOME10 / TOTAL PAID breakdown.
+- Closed the dialog → navbar now shows "Open order history — 1 order" (space-blue badge) + "Open cart — 0 items" (cart cleared).
+- Opened order history → expanded `LO-9BL59K67` → shows PAID status, The Judgement (eBook) with "Resend eBook link", COUPON WELCOME10 line, buyer email.
+- Server logs confirmed both emails dispatched (buyer "Your eBook" + author "[eBook sale]").
+- DB check confirmed order notes = "Coupon WELCOME10 applied — saved $1.00 (subtotal $9.99 → total $8.99)", totalCents = 899.
+- Opened 2 more books → Recently Viewed section now shows 3 books (The Apocalypse Cometh, The Cure, The Judgement) with "3 BOOKS" counter + Clear button.
+- `bun run lint` passes with 0 errors and 0 warnings.
+
+Stage Summary:
+- Three new user-facing features shipped: Recently Viewed shelf, Order History dialog, Coupon/promo codes. All persisted to localStorage, all gated on hydration to avoid SSR mismatch, all lint-clean.
+- Two UX bugs fixed: the LaunchListModal no longer competes with commerce dialogs, and dismissals now last 7 days instead of 1 session.
+- 8 new CSS animations + utility classes added for micro-interactions (badge pop, check pulse, coupon flash, card lift, button press, focus rings).
+- The original site (Hero, About, Coming Soon, Bookshelf, Footer, all decorative components) remains 100% intact — every change is additive.
+- Ready for the next round: live Stripe Payment Element + PayPal SDK buttons (when keys land), admin order-list view under /admin, refining email templates, more coupon codes, signed-copy upsell.

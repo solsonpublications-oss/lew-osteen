@@ -10,6 +10,7 @@ import { validateCartItems, type ValidatedItem } from "@/lib/ecommerce/cart-vali
 import { generatePublicId, generateToken } from "@/lib/ecommerce/public-id";
 import { getSiteUrl, isDemoMode } from "@/lib/ecommerce/config";
 import { fromCents, formatUSD } from "@/lib/ecommerce/money";
+import { validateCoupon, incrementRedemption } from "@/lib/ecommerce/coupons";
 import {
   sendBuyerEbookEmail,
   sendBuyerPrintEmail,
@@ -129,9 +130,31 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false, error: v.error }, { status: 400 });
     }
     const items = v.items;
-    const totalCents = v.totalCents;
+    const subtotalCents = v.totalCents;
     const hasPrint = !!v.hasPrint;
     const hasDigital = !!v.hasDigital;
+
+    // --- optional coupon ---
+    // Re-validate the coupon server-side against the authoritative subtotal
+    // so the discount is never tampered with by the client.
+    const couponCodeRaw = str(b.couponCode, 40);
+    let discountCents = 0;
+    let appliedCouponCode: string | null = null;
+    if (couponCodeRaw) {
+      const couponRes = validateCoupon(couponCodeRaw, subtotalCents / 100);
+      if (!couponRes.ok) {
+        return NextResponse.json(
+          { ok: false, error: `Coupon: ${couponRes.error}` },
+          { status: 400 }
+        );
+      }
+      discountCents = couponRes.discountCents;
+      appliedCouponCode = couponRes.coupon.code;
+      // Count the redemption immediately (in-memory; a real DB would
+      // transactionalize this with the order write).
+      incrementRedemption(appliedCouponCode);
+    }
+    const totalCents = Math.max(0, subtotalCents - discountCents);
 
     // --- shipping address (required when any item is print) ---
     let shippingAddress: ShippingAddress | null = null;
@@ -177,7 +200,18 @@ export async function POST(req: NextRequest) {
         currency: "USD",
         hasPrint,
         hasDigital,
-        notes: notes || null,
+        notes: [
+          notes,
+          appliedCouponCode
+            ? `Coupon ${appliedCouponCode} applied — saved ${formatUSD(
+                discountCents / 100
+              )} (subtotal ${formatUSD(subtotalCents / 100)} → total ${formatUSD(
+                totalCents / 100
+              )})`
+            : null,
+        ]
+          .filter(Boolean)
+          .join(" · ") || null,
         items: {
           create: items.map((it) => ({
             bookTitle: it.bookTitle,
@@ -305,6 +339,11 @@ export async function POST(req: NextRequest) {
       order: {
         publicId,
         status: order.status,
+        subtotalCents,
+        subtotalUSD: formatUSD(fromCents(subtotalCents)),
+        discountCents,
+        discountUSD: formatUSD(fromCents(discountCents)),
+        couponCode: appliedCouponCode,
         totalCents,
         totalUSD: formatUSD(fromCents(totalCents)),
         currency: "USD",
@@ -319,6 +358,7 @@ export async function POST(req: NextRequest) {
           qty: it.qty,
           unitPriceCents: it.unitPriceCents,
           lineTotalCents: it.lineTotalCents,
+          coverPath: it.coverPath,
         })),
       },
     });

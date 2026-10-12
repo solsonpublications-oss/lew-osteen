@@ -17,6 +17,8 @@ import { SectionProgressDots } from "@/components/site/SectionProgressDots";
 import { SectionDivider } from "@/components/site/SectionDivider";
 import { CartDrawer } from "@/components/site/CartDrawer";
 import { CheckoutDialog } from "@/components/site/CheckoutDialog";
+import { OrderHistoryDialog } from "@/components/site/OrderHistoryDialog";
+import { RecentlyViewed } from "@/components/site/RecentlyViewed";
 
 export default function Home() {
   return (
@@ -34,6 +36,8 @@ export default function Home() {
         <PressStrip />
         <SectionDivider variant="diamond" />
         <Bookshelf />
+        {/* Recently viewed appears here once the visitor has opened ≥1 book */}
+        <RecentlyViewed />
         <FeaturedSeries />
         <WhereToStart />
         <SectionDivider variant="pyramid" />
@@ -45,6 +49,7 @@ export default function Home() {
       <LaunchListModal />
       <CartDrawer />
       <CheckoutDialog />
+      <OrderHistoryDialog />
     </div>
   );
 }

@@ -10,6 +10,7 @@ import { create } from "zustand";
 type UIState = {
   cartOpen: boolean;
   checkoutOpen: boolean;
+  orderHistoryOpen: boolean;
   // when set, checkout starts directly with this single item (Buy Now flow)
   buyNowItem: null | {
     bookSlug: string;
@@ -23,6 +24,9 @@ type UIState = {
   toggleCart: () => void;
   openCheckout: () => void;
   closeCheckout: () => void;
+  openOrderHistory: () => void;
+  closeOrderHistory: () => void;
+  toggleOrderHistory: () => void;
   startBuyNow: (item: {
     bookSlug: string;
     bookTitle: string;
@@ -36,12 +40,16 @@ type UIState = {
 export const useUI = create<UIState>((set) => ({
   cartOpen: false,
   checkoutOpen: false,
+  orderHistoryOpen: false,
   buyNowItem: null,
   openCart: () => set({ cartOpen: true }),
   closeCart: () => set({ cartOpen: false }),
   toggleCart: () => set((s) => ({ cartOpen: !s.cartOpen })),
   openCheckout: () => set({ cartOpen: false, checkoutOpen: true }),
   closeCheckout: () => set({ checkoutOpen: false, buyNowItem: null }),
+  openOrderHistory: () => set({ orderHistoryOpen: true }),
+  closeOrderHistory: () => set({ orderHistoryOpen: false }),
+  toggleOrderHistory: () => set((s) => ({ orderHistoryOpen: !s.orderHistoryOpen })),
   startBuyNow: (item) =>
     set({ buyNowItem: item, checkoutOpen: true, cartOpen: false }),
   clearBuyNow: () => set({ buyNowItem: null }),

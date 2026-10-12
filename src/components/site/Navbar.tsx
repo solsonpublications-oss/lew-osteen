@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Menu, X, BookOpen, ShoppingBag } from "lucide-react";
+import { Menu, X, BookOpen, ShoppingBag, History } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ThemeToggle } from "./ThemeToggle";
 import { AmbientAudioToggle } from "./AmbientAudioToggle";
 import { useCart } from "@/lib/cart-store";
 import { useUI } from "@/lib/ui-store";
+import { useOrderHistory } from "@/lib/order-history-store";
 
 const NAV_LINKS = [
   { label: "Home", href: "#home" },
@@ -22,6 +23,11 @@ export function Navbar() {
   const [activeSection, setActiveSection] = useState<string>("#home");
   const cartCount = useCart((s) => s.count());
   const openCart = useUI((s) => s.openCart);
+  const openOrderHistory = useUI((s) => s.openOrderHistory);
+  const orderCount = useOrderHistory((s) => s.orders.length);
+  // hydrated is only true after client-side localStorage rehydration, so it's
+  // a safe gate for the order-history badge (prevents SSR/CSR mismatch).
+  const orderHydrated = useOrderHistory((s) => s.hydrated);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 40);
@@ -127,8 +133,24 @@ export function Navbar() {
           })}
         </ul>
 
-        {/* Cart + Theme + ambient audio toggles (desktop + mobile) */}
+        {/* Cart + Order History + Theme + ambient audio toggles (desktop + mobile) */}
         <div className="flex items-center gap-2">
+          {/* Order history — only show badge once hydrated + has orders */}
+          <button
+            onClick={openOrderHistory}
+            aria-label={`Open order history${orderHydrated && orderCount > 0 ? ` — ${orderCount} order${orderCount === 1 ? "" : "s"}` : ""}`}
+            className="relative h-9 w-9 rounded-full border border-gold/50 text-gold hover:text-gold-bright hover:border-gold hover:bg-gold/5 flex items-center justify-center transition-all"
+          >
+            <History className="h-4 w-4" />
+            {orderHydrated && orderCount > 0 && (
+              <span
+                className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-gradient-to-b from-[#1B2A5C] to-[#0e1735] text-cream font-ui text-[0.58rem] font-bold flex items-center justify-center shadow-md border border-gold/40"
+                aria-hidden="true"
+              >
+                {orderCount > 99 ? "99+" : orderCount}
+              </span>
+            )}
+          </button>
           <button
             onClick={openCart}
             aria-label={`Open cart — ${cartCount} item${cartCount === 1 ? "" : "s"}`}
@@ -137,7 +159,8 @@ export function Navbar() {
             <ShoppingBag className="h-4 w-4" />
             {cartCount > 0 && (
               <span
-                className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-gradient-to-b from-[#F2C94C] to-[#D9B26B] text-[#1A1407] font-ui text-[0.58rem] font-bold flex items-center justify-center shadow-md"
+                key={cartCount}
+                className="badge-pop absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-gradient-to-b from-[#F2C94C] to-[#D9B26B] text-[#1A1407] font-ui text-[0.58rem] font-bold flex items-center justify-center shadow-md"
                 aria-hidden="true"
               >
                 {cartCount > 99 ? "99+" : cartCount}

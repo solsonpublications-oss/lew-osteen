@@ -10,18 +10,28 @@ import {
   DialogClose,
 } from "@/components/ui/dialog";
 import { Mail, CheckCircle2, Loader2, X, Sparkles } from "lucide-react";
+import { useUI } from "@/lib/ui-store";
 
 const STORAGE_KEY = "leo-launch-modal-dismissed";
+const DISMISS_COOLDOWN_DAYS = 7;
 
 export function LaunchListModal() {
   const [open, setOpen] = useState(false);
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
 
+  // Pull UI state so we can suppress the launch modal whenever a more
+  // important dialog (book detail, cart drawer, checkout) is open.
+  const cartOpen = useUI((s) => s.cartOpen);
+  const checkoutOpen = useUI((s) => s.checkoutOpen);
+
   useEffect(() => {
-    // Don't show the modal again in the same session once dismissed.
     if (typeof window === "undefined") return;
-    if (sessionStorage.getItem(STORAGE_KEY)) return;
+    // Respect the long-lived dismissal cooldown so the modal doesn't
+    // nag return visitors on every fresh session.
+    const dismissedAt = Number(localStorage.getItem(STORAGE_KEY) || 0);
+    const cooldownMs = DISMISS_COOLDOWN_DAYS * 24 * 60 * 60 * 1000;
+    if (dismissedAt && Date.now() - dismissedAt < cooldownMs) return;
 
     let triggered = false;
     let scrollTriggered = false;
@@ -63,10 +73,21 @@ export function LaunchListModal() {
     };
   }, []);
 
+  // Auto-close (and remember the dismissal) if any commerce UI opens
+  // while the launch modal is showing — the commerce flow takes priority.
+  // We compute this during render (no setState-in-effect) and reset the
+  // open flag + localStorage when the dismissal condition is met.
+  if (open && (cartOpen || checkoutOpen)) {
+    setOpen(false);
+    if (typeof window !== "undefined") {
+      localStorage.setItem(STORAGE_KEY, String(Date.now()));
+    }
+  }
+
   const close = () => {
     setOpen(false);
     if (typeof window !== "undefined") {
-      sessionStorage.setItem(STORAGE_KEY, "1");
+      localStorage.setItem(STORAGE_KEY, String(Date.now()));
     }
   };
 

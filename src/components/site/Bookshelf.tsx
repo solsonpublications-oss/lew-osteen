@@ -7,6 +7,7 @@ import { BookCover } from "./BookCover";
 import { BookDetailModal } from "./BookDetailModal";
 import { RevealOnScroll } from "./RevealOnScroll";
 import { SectionHeading } from "./SectionHeading";
+import { useRecentlyViewed } from "@/lib/recently-viewed-store";
 
 const SPEED_PX_PER_SEC = 48; // slow drift
 const RESUME_DELAY_MS = 3000;
@@ -40,6 +41,17 @@ export function Bookshelf() {
   // Selected book for the detail modal.
   const [selectedBook, setSelectedBook] = useState<Book | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
+  const trackViewed = useRecentlyViewed((s) => s.track);
+
+  // When a book is opened in the modal, record it in recently-viewed.
+  const openBook = useCallback(
+    (book: Book) => {
+      setSelectedBook(book);
+      setModalOpen(true);
+      trackViewed(book);
+    },
+    [trackViewed]
+  );
 
   // Books filtered by the active genre. Duplicated so the marquee loops seamlessly.
   const filtered =
@@ -302,10 +314,7 @@ export function Bookshelf() {
                 key={`${book.title}-${idx}`}
                 book={book}
                 index={idx % books.length}
-                onSelect={() => {
-                  setSelectedBook(book);
-                  setModalOpen(true);
-                }}
+                onSelect={() => openBook(book)}
                 draggedRef={dragStateRef}
               />
             ))}
@@ -335,10 +344,7 @@ export function Bookshelf() {
             // Pick a random book from the filtered set and open its modal.
             const pool = filtered.length ? filtered : books;
             const pick = pool[Math.floor(Math.random() * pool.length)];
-            if (pick) {
-              setSelectedBook(pick);
-              setModalOpen(true);
-            }
+            if (pick) openBook(pick);
           }}
           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-gold/40 text-gold hover:text-gold-bright hover:border-gold hover:bg-gold/5 font-ui text-[0.6rem] uppercase tracking-widest-2 transition-all"
         >

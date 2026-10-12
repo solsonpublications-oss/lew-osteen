@@ -397,9 +397,109 @@
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.001ms !important;
+    animation-duration: 0.001ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
     scroll-behavior: auto !important;
   }
   .marquee-track { animation: none !important; }
+}
+
+/* ===== Ecommerce: cart badge pop ===== */
+@keyframes badgePop {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.35); }
+  100% { transform: scale(1); }
+}
+.badge-pop {
+  animation: badgePop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* ===== Ecommerce: format radio selected glow ===== */
+.format-radio-active {
+  box-shadow: 0 0 0 1px rgba(217,178,107,0.55), 0 0 18px -6px rgba(217,178,107,0.45);
+}
+
+/* ===== Ecommerce: order confirmation check ===== */
+@keyframes checkPulse {
+  0%, 100% { box-shadow: 0 0 30px -4px rgba(217,178,107,0.7), 0 0 0 0 rgba(217,178,107,0.4); }
+  50% { box-shadow: 0 0 30px -4px rgba(217,178,107,0.7), 0 0 0 12px rgba(217,178,107,0); }
+}
+.check-pulse {
+  animation: checkPulse 2s ease-out infinite;
+}
+
+/* ===== Ecommerce: order row enter ===== */
+@keyframes slideInUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.slide-in-up {
+  animation: slideInUp 0.3s ease-out;
+}
+
+/* ===== Ecommerce: coupon applied flash ===== */
+@keyframes couponFlash {
+  0% { background-color: rgba(217,178,107,0.25); }
+  100% { background-color: rgba(217,178,107,0.1); }
+}
+.coupon-flash {
+  animation: couponFlash 1.2s ease-out;
+}
+
+/* ===== Ecommerce: recently viewed card hover lift ===== */
+.recently-card {
+  transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.35s ease;
+}
+.recently-card:hover {
+  transform: translateY(-6px);
+  box-shadow: 0 14px 30px rgba(0,0,0,0.55), 0 0 24px rgba(217,178,107,0.18);
+}
+
+/* ===== Ecommerce: stepper button press ===== */
+@keyframes pressDown {
+  0% { transform: scale(1); }
+  50% { transform: scale(0.92); }
+  100% { transform: scale(1); }
+}
+.press-down:active {
+  animation: pressDown 0.18s ease-out;
+}
+
+/* ===== Ecommerce: shimmer for loading buttons ===== */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    rgba(217,178,107,0.0) 0%,
+    rgba(217,178,107,0.18) 50%,
+    rgba(217,178,107,0.0) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.6s ease-in-out infinite;
+}
+
+/* ===== Ecommerce: mobile sticky checkout bar ===== */
+@media (max-width: 640px) {
+  .checkout-sticky-cta {
+    position: sticky;
+    bottom: 0;
+    background: linear-gradient(180deg, transparent 0%, #15120F 35%);
+    padding-top: 16px;
+    margin-top: -8px;
+    z-index: 5;
+  }
+}
+
+/* ===== Ecommerce: focus ring for accessibility ===== */
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+[role="radio"]:focus-visible {
+  outline: 2px solid rgba(217,178,107,0.7);
+  outline-offset: 2px;
+  border-radius: 3px;
 }

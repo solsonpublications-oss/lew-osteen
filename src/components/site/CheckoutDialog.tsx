@@ -26,10 +26,13 @@ import {
   Download,
   Copy,
   Check,
+  Tag,
+  X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useCart, formatUSD, type CartItem } from "@/lib/cart-store";
 import { useUI } from "@/lib/ui-store";
+import { useOrderHistory } from "@/lib/order-history-store";
 import {
   FORMAT_LABEL,
   requiresShipping,
@@ -56,6 +59,9 @@ type PaymentMethod = "stripe" | "paypal" | null;
 type OrderConfirmation = {
   publicId: string;
   status: string;
+  subtotalCents?: number;
+  discountCents?: number;
+  couponCode?: string | null;
   totalCents: number;
   hasPrint: boolean;
   hasDigital: boolean;
@@ -79,6 +85,7 @@ export function CheckoutDialog() {
   const clearBuyNow = useUI((s) => s.clearBuyNow);
   const clearCart = useCart((s) => s.clear);
   const cartItems = useCart((s) => s.items);
+  const addOrderToHistory = useOrderHistory((s) => s.addOrder);
 
   // Effective items to checkout: buyNow overrides cart.
   const items: CartItem[] = useMemo(() => {
@@ -131,6 +138,70 @@ export function CheckoutDialog() {
   }>(null);
   const [creatingIntent, setCreatingIntent] = useState(false);
 
+  // Coupon state
+  const [couponCode, setCouponCode] = useState("");
+  const [appliedCoupon, setAppliedCoupon] = useState<null | {
+    code: string;
+    description: string;
+    discountCents: number;
+    newTotalCents: number;
+  }>(null);
+  const [couponStatus, setCouponStatus] = useState<"idle" | "loading" | "error">("idle");
+  const [couponError, setCouponError] = useState<string | null>(null);
+
+  // Apply coupon — calls /api/checkout/validate-coupon with the cart.
+  const applyCoupon = async () => {
+    const code = couponCode.trim();
+    if (!code) {
+      setCouponStatus("error");
+      setCouponError("Please enter a code.");
+      return;
+    }
+    setCouponStatus("loading");
+    setCouponError(null);
+    try {
+      const res = await fetch("/api/checkout/validate-coupon", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          code,
+          items: items.map((i) => ({
+            bookSlug: i.bookSlug,
+            format: i.format,
+            qty: i.qty,
+          })),
+        }),
+      });
+      const data = await res.json();
+      if (!data.ok) {
+        setCouponStatus("error");
+        setCouponError(data.error || "Invalid coupon.");
+        setAppliedCoupon(null);
+        return;
+      }
+      setAppliedCoupon({
+        code: data.code,
+        description: data.description,
+        discountCents: data.discountCents,
+        newTotalCents: data.newTotalCents,
+      });
+      setCouponStatus("idle");
+      toast.success(`Coupon ${data.code} applied`, {
+        description: data.description,
+      });
+    } catch (e: any) {
+      setCouponStatus("error");
+      setCouponError(e?.message || "Could not validate coupon.");
+    }
+  };
+
+  const removeCoupon = () => {
+    setAppliedCoupon(null);
+    setCouponCode("");
+    setCouponStatus("idle");
+    setCouponError(null);
+  };
+
   // Confirmation
   const [confirmation, setConfirmation] = useState<OrderConfirmation | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -146,6 +217,11 @@ export function CheckoutDialog() {
         setConfirmation(null);
         setError(null);
         setNotes("");
+        // Reset coupon state too.
+        setCouponCode("");
+        setAppliedCoupon(null);
+        setCouponStatus("idle");
+        setCouponError(null);
       }, 250);
       return () => clearTimeout(t);
     }
@@ -291,6 +367,7 @@ export function CheckoutDialog() {
         })),
         notes: notes.trim() || undefined,
         buyNow: !!buyNowItem,
+        couponCode: appliedCoupon?.code || undefined,
       };
       if (hasPrint) body.shippingAddress = ship;
 
@@ -306,6 +383,29 @@ export function CheckoutDialog() {
       // Clear cart + buy-now on success
       if (!buyNowItem) clearCart();
       clearBuyNow();
+      // Persist to the visitor's order history (localStorage) so they can
+      // re-view / re-download from the navbar at any time.
+      addOrderToHistory({
+        publicId: data.order.publicId,
+        createdAt: Date.now(),
+        subtotalCents: data.order.subtotalCents ?? Math.round(subtotal * 100),
+        discountCents: data.order.discountCents,
+        couponCode: data.order.couponCode,
+        totalCents: data.order.totalCents,
+        currency: data.order.currency || "USD",
+        hasPrint: data.order.hasPrint,
+        hasDigital: data.order.hasDigital,
+        luluStatus: data.order.luluStatus,
+        paymentMethod: payMethod,
+        buyerEmail: email.trim().toLowerCase(),
+        items: items.map((i) => ({
+          bookTitle: i.bookTitle,
+          bookSlug: i.bookSlug,
+          cover: i.cover,
+          format: i.format,
+          qty: i.qty,
+        })),
+      });
       toast.success("Order placed!", {
         description: `Your order ${data.order.publicId} has been confirmed.`,
       });
@@ -400,6 +500,12 @@ export function CheckoutDialog() {
               subtotal={subtotal}
               itemCount={itemCount}
               onNext={goToPayment}
+              couponCode={couponCode} setCouponCode={setCouponCode}
+              appliedCoupon={appliedCoupon}
+              couponStatus={couponStatus}
+              couponError={couponError}
+              onApplyCoupon={applyCoupon}
+              onRemoveCoupon={removeCoupon}
             />
           )}
 
@@ -422,6 +528,7 @@ export function CheckoutDialog() {
               items={items}
               subtotal={subtotal}
               email={email}
+              coupon={appliedCoupon}
             />
           )}
 
@@ -489,17 +596,31 @@ function InfoStep(props: {
   error: string | null;
   items: CartItem[]; subtotal: number; itemCount: number;
   onNext: () => void;
+  // coupon
+  couponCode: string; setCouponCode: (v: string) => void;
+  appliedCoupon: {
+    code: string;
+    description: string;
+    discountCents: number;
+    newTotalCents: number;
+  } | null;
+  couponStatus: "idle" | "loading" | "error";
+  couponError: string | null;
+  onApplyCoupon: () => void;
+  onRemoveCoupon: () => void;
 }) {
   const {
     email, setEmail, name, setName, phone, setPhone,
     hasPrint, ship, setShip, notes, setNotes, error,
     items, subtotal, itemCount, onNext,
+    couponCode, setCouponCode, appliedCoupon, couponStatus, couponError,
+    onApplyCoupon, onRemoveCoupon,
   } = props;
 
   return (
     <div className="space-y-6">
       {/* Order summary (compact) */}
-      <OrderSummary items={items} subtotal={subtotal} itemCount={itemCount} />
+      <OrderSummary items={items} subtotal={subtotal} itemCount={itemCount} coupon={appliedCoupon} />
 
       {/* Contact */}
       <section>
@@ -578,6 +699,70 @@ function InfoStep(props: {
         </Field>
       </section>
 
+      {/* Promo / coupon code */}
+      <section>
+        <SectionLabel icon={Tag}>Promo code</SectionLabel>
+        {appliedCoupon ? (
+          <div className="mt-3 rounded-sm border border-gold/50 bg-gold/10 p-3 flex items-center justify-between gap-3 coupon-flash">
+            <div className="flex items-center gap-2 min-w-0">
+              <CheckCircle2 className="h-4 w-4 text-gold-bright flex-shrink-0" />
+              <div className="min-w-0">
+                <div className="font-ui text-[0.7rem] uppercase tracking-widest-2 text-gold-bright">
+                  {appliedCoupon.code} applied
+                </div>
+                <div className="font-body text-[0.7rem] text-cream/80 italic truncate">
+                  {appliedCoupon.description}
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 flex-shrink-0">
+              <span className="font-heading text-gold-bright text-sm">
+                −{formatUSD(appliedCoupon.discountCents / 100)}
+              </span>
+              <button
+                onClick={onRemoveCoupon}
+                aria-label="Remove coupon"
+                className="text-muted-warm hover:text-ember transition-colors"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="mt-3 flex gap-2">
+            <Input
+              value={couponCode}
+              onChange={(e) => {
+                setCouponCode(e.target.value.toUpperCase());
+                if (couponStatus === "error") setCouponStatus("idle");
+              }}
+              placeholder="e.g. WELCOME10"
+              className="bg-deep/80 border-gold-soft text-cream placeholder:text-muted-warm/60 focus:border-gold focus:ring-gold/40 font-ui tracking-widest uppercase text-sm"
+              aria-label="Promo code"
+            />
+            <Button
+              variant="outline"
+              onClick={onApplyCoupon}
+              disabled={couponStatus === "loading"}
+              className="btn-outline-gold border border-gold/60 text-gold hover:text-gold-bright flex-shrink-0 inline-flex items-center gap-1.5"
+            >
+              {couponStatus === "loading" ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Tag className="h-3.5 w-3.5" />
+              )}
+              Apply
+            </Button>
+          </div>
+        )}
+        {couponStatus === "error" && couponError && (
+          <p className="text-[0.72rem] text-ember font-ui mt-1.5">{couponError}</p>
+        )}
+        <p className="font-body text-[0.68rem] text-muted-warm italic mt-2">
+          Try <button onClick={() => setCouponCode("WELCOME10")} className="text-gold-bright underline underline-offset-2 hover:text-gold">WELCOME10</button> for 10% off, or <button onClick={() => setCouponCode("EBOOK5")} className="text-gold-bright underline underline-offset-2 hover:text-gold">EBOOK5</button> for $5 off.
+        </p>
+      </section>
+
       {error && (
         <p className="text-[0.78rem] text-ember font-ui">{error}</p>
       )}
@@ -609,16 +794,25 @@ function PaymentStep(props: {
   onPay: (m: "stripe" | "paypal") => void;
   error: string | null;
   items: CartItem[]; subtotal: number; email: string;
+  coupon?: {
+    code: string;
+    description: string;
+    discountCents: number;
+    newTotalCents: number;
+  } | null;
 }) {
   const {
     method, onChooseStripe, onChoosePaypal, creatingIntent,
     stripeIntent, paypalOrder, onStripePayDemo, onPaypalPayDemo, onBack, error,
-    items, subtotal,
+    items, subtotal, coupon,
   } = props;
+
+  // The amount the buyer will actually pay — after any applied coupon.
+  const effectiveTotal = coupon ? coupon.newTotalCents / 100 : subtotal;
 
   return (
     <div className="space-y-6">
-      <OrderSummary items={items} subtotal={subtotal} itemCount={items.reduce((n, i) => n + i.qty, 0)} />
+      <OrderSummary items={items} subtotal={subtotal} itemCount={items.reduce((n, i) => n + i.qty, 0)} coupon={coupon} />
 
       <section>
         <SectionLabel icon={CreditCard}>Choose payment method</SectionLabel>
@@ -696,7 +890,7 @@ function PaymentStep(props: {
                   onClick={onStripePayDemo}
                 >
                   <CreditCard className="h-4 w-4" />
-                  Simulate card payment · {formatUSD(subtotal)}
+                  Simulate card payment · {formatUSD(effectiveTotal)}
                 </Button>
               </div>
             ) : (
@@ -711,7 +905,7 @@ function PaymentStep(props: {
                   onClick={onStripePayDemo}
                 >
                   <CreditCard className="h-4 w-4" />
-                  Confirm payment · {formatUSD(subtotal)}
+                  Confirm payment · {formatUSD(effectiveTotal)}
                 </Button>
               </div>
             )
@@ -741,7 +935,7 @@ function PaymentStep(props: {
                   onClick={onPaypalPayDemo}
                 >
                   <CreditCard className="h-4 w-4" />
-                  Simulate PayPal payment · {formatUSD(subtotal)}
+                  Simulate PayPal payment · {formatUSD(effectiveTotal)}
                 </Button>
               </div>
             ) : (
@@ -756,7 +950,7 @@ function PaymentStep(props: {
                   onClick={onPaypalPayDemo}
                 >
                   <CreditCard className="h-4 w-4" />
-                  Approve &amp; capture · {formatUSD(subtotal)}
+                  Approve &amp; capture · {formatUSD(effectiveTotal)}
                 </Button>
               </div>
             )
@@ -794,6 +988,8 @@ function ConfirmationStep(props: {
 }) {
   const { order, email, onClose } = props;
   const totalUSD = (order.totalCents / 100).toFixed(2);
+  const subtotalUSD = order.subtotalCents != null ? (order.subtotalCents / 100).toFixed(2) : null;
+  const discountUSD = order.discountCents != null && order.discountCents > 0 ? (order.discountCents / 100).toFixed(2) : null;
   const [copied, setCopied] = useState(false);
 
   const copyOrderId = () => {
@@ -806,7 +1002,7 @@ function ConfirmationStep(props: {
 
   return (
     <div className="space-y-6 text-center">
-      <div className="mx-auto h-16 w-16 rounded-full bg-gradient-to-b from-[#F2C94C] to-[#D9B26B] flex items-center justify-center text-[#1A1407] shadow-[0_0_30px_-4px_rgba(217,178,107,0.7)]">
+      <div className="mx-auto h-16 w-16 rounded-full bg-gradient-to-b from-[#F2C94C] to-[#D9B26B] flex items-center justify-center text-[#1A1407] shadow-[0_0_30px_-4px_rgba(217,178,107,0.7)] check-pulse">
         <CheckCircle2 className="h-9 w-9" />
       </div>
 
@@ -898,12 +1094,37 @@ function ConfirmationStep(props: {
           ))}
         </ul>
         <Separator className="my-3 bg-gold-soft/30" />
-        <div className="flex items-center justify-between">
-          <span className="font-ui text-[0.66rem] uppercase tracking-widest-2 text-muted-warm">
-            Total paid
-          </span>
-          <span className="font-heading text-cream text-lg">${totalUSD}</span>
-        </div>
+        {subtotalUSD && discountUSD && order.couponCode ? (
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <span className="font-ui text-[0.6rem] uppercase tracking-widest-2 text-muted-warm">
+                Subtotal
+              </span>
+              <span className="font-ui text-cream/80 text-sm">${subtotalUSD}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="font-ui text-[0.6rem] uppercase tracking-widest-2 text-gold-bright flex items-center gap-1.5">
+                <span className="inline-block h-1.5 w-1.5 rounded-full bg-gold-bright" />
+                Coupon {order.couponCode}
+              </span>
+              <span className="font-ui text-gold-bright text-sm">−${discountUSD}</span>
+            </div>
+            <Separator className="my-1 bg-gold-soft/30" />
+            <div className="flex items-center justify-between">
+              <span className="font-ui text-[0.66rem] uppercase tracking-widest-2 text-cream">
+                Total paid
+              </span>
+              <span className="font-heading text-cream text-lg">${totalUSD}</span>
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-center justify-between">
+            <span className="font-ui text-[0.66rem] uppercase tracking-widest-2 text-muted-warm">
+              Total paid
+            </span>
+            <span className="font-heading text-cream text-lg">${totalUSD}</span>
+          </div>
+        )}
       </div>
 
       <Button
@@ -920,7 +1141,24 @@ function ConfirmationStep(props: {
 // ============================================================
 // Shared sub-components
 // ============================================================
-function OrderSummary({ items, subtotal, itemCount }: { items: CartItem[]; subtotal: number; itemCount: number; }) {
+function OrderSummary({
+  items,
+  subtotal,
+  itemCount,
+  coupon,
+}: {
+  items: CartItem[];
+  subtotal: number;
+  itemCount: number;
+  coupon?: {
+    code: string;
+    description: string;
+    discountCents: number;
+    newTotalCents: number;
+  } | null;
+}) {
+  const discountUSD = coupon ? coupon.discountCents / 100 : 0;
+  const totalUSD = coupon ? coupon.newTotalCents / 100 : subtotal;
   return (
     <div className="rounded-sm border border-gold-soft/40 bg-deep/40 p-4">
       <div className="flex items-center justify-between mb-3">
@@ -956,6 +1194,27 @@ function OrderSummary({ items, subtotal, itemCount }: { items: CartItem[]; subto
         </span>
         <span className="font-heading text-cream text-lg">{formatUSD(subtotal)}</span>
       </div>
+      {coupon && (
+        <>
+          <div className="flex items-center justify-between mt-2">
+            <span className="font-ui text-[0.6rem] uppercase tracking-widest-2 text-gold-bright flex items-center gap-1.5">
+              <span className="inline-block h-1.5 w-1.5 rounded-full bg-gold-bright" />
+              Coupon {coupon.code}
+            </span>
+            <span className="font-heading text-gold-bright text-base">−{formatUSD(discountUSD)}</span>
+          </div>
+          <p className="font-body text-[0.6rem] text-muted-warm italic mt-0.5 text-right">
+            {coupon.description}
+          </p>
+          <Separator className="my-2 bg-gold-soft/30" />
+          <div className="flex items-center justify-between">
+            <span className="font-ui text-[0.66rem] uppercase tracking-widest-2 text-cream">
+              Total
+            </span>
+            <span className="font-heading text-cream text-xl">{formatUSD(totalUSD)}</span>
+          </div>
+        </>
+      )}
     </div>
   );
 }
