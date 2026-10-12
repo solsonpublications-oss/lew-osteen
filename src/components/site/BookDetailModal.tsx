@@ -21,6 +21,7 @@ import {
   ShoppingBag,
   Zap,
   Loader2,
+  Heart,
 } from "lucide-react";
 import {
   type Book,
@@ -34,7 +35,11 @@ import { BookCover } from "./BookCover";
 import { cn } from "@/lib/utils";
 import { useCart, bookSlug, formatUSD } from "@/lib/cart-store";
 import { useUI } from "@/lib/ui-store";
+import { useWishlist } from "@/lib/wishlist-store";
 import { toast } from "sonner";
+import { getExcerpt } from "@/data/excerpts";
+import { ExcerptViewer } from "./ExcerptViewer";
+import { ReviewsSection } from "./ReviewsSection";
 
 type BookDetailModalProps = {
   book: Book | null;
@@ -69,10 +74,16 @@ export function BookDetailModal({ book, open, onOpenChange }: BookDetailModalPro
 
   const addItem = useCart((s) => s.addItem);
   const cartCount = useCart((s) => s.count());
+  const wishlistItems = useWishlist((s) => s.items);
+  const toggleWishlist = useWishlist((s) => s.toggle);
+  const isWishlisted = book ? wishlistItems.some((i) => i.slug === bookSlug(book.title)) : false;
   const openCart = useUI((s) => s.openCart);
   const startBuyNow = useUI((s) => s.startBuyNow);
   const [adding, setAdding] = useState(false);
   const [buyingNow, setBuyingNow] = useState(false);
+  const [excerptOpen, setExcerptOpen] = useState(false);
+
+  const excerptAvailable = book ? !!getExcerpt(bookSlug(book.title)) : false;
 
   // Close the share menu on outside click / Escape.
   useEffect(() => {
@@ -93,7 +104,17 @@ export function BookDetailModal({ book, open, onOpenChange }: BookDetailModalPro
     };
   }, [shareOpen]);
 
-  if (!book) return null;
+  // Excerpt viewer is rendered unconditionally so it can open even after
+  // the parent modal closes — it gates on `book` internally.
+  const excerptViewer = (
+    <ExcerptViewer
+      book={book}
+      open={excerptOpen}
+      onOpenChange={setExcerptOpen}
+    />
+  );
+
+  if (!book) return excerptViewer;
 
   const shareUrl = bookShareUrl(book);
   const shareText = `${book.title} by Lew Osteen — ${book.genre}`;
@@ -163,6 +184,7 @@ export function BookDetailModal({ book, open, onOpenChange }: BookDetailModalPro
   };
 
   return (
+    <>
     <Dialog
       open={open}
       onOpenChange={(o) => {
@@ -261,7 +283,7 @@ export function BookDetailModal({ book, open, onOpenChange }: BookDetailModalPro
                         aria-checked={active}
                         onClick={() => setOverrideFormat(f)}
                         className={cn(
-                          "group flex items-center gap-3 px-3 py-2.5 rounded-sm border text-left transition-all",
+                          "format-radio-card group flex items-center gap-3 px-3 py-2.5 rounded-sm border text-left transition-all",
                           active
                             ? "border-gold bg-gold/10 shadow-[0_0_18px_-6px_rgba(217,178,107,0.45)]"
                             : "border-gold-soft hover:border-gold/60 hover:bg-gold/5"
@@ -331,8 +353,41 @@ export function BookDetailModal({ book, open, onOpenChange }: BookDetailModalPro
               </div>
             )}
 
-            {/* Action row: Amazon + Share menu + Close */}
+            {/* ===== REVIEWS ===== */}
+            <ReviewsSection slug={bookSlug(book.title)} bookTitle={book.title} />
+
+            {/* Action row: Wishlist + Amazon + Share menu + Close */}
             <div className="flex flex-wrap items-center gap-3">
+              <button
+                onClick={() => {
+                  if (!book) return;
+                  toggleWishlist(book);
+                  toast.success(
+                    isWishlisted
+                      ? `Removed ${book.title} from wishlist`
+                      : `${book.title} added to wishlist`,
+                    { action: { label: "View", onClick: () => useUI.getState().openWishlist() } }
+                  );
+                }}
+                aria-label={isWishlisted ? `Remove ${book.title} from wishlist` : `Add ${book.title} to wishlist`}
+                aria-pressed={isWishlisted}
+                className={cn(
+                  "inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-sm border font-ui text-[0.66rem] uppercase tracking-widest-2 transition-all",
+                  isWishlisted
+                    ? "border-ember/60 text-ember bg-ember/10 hover:bg-ember/20"
+                    : "border-gold-soft text-muted-warm hover:text-ember hover:border-ember/50"
+                )}
+              >
+                <Heart
+                  key={isWishlisted ? "filled" : "outline"}
+                  className={cn(
+                    "h-3.5 w-3.5",
+                    isWishlisted && "fill-ember heart-beat"
+                  )}
+                />
+                {isWishlisted ? "Saved" : "Save"}
+              </button>
+
               <a
                 href={book.amazonUrl}
                 target="_blank"
@@ -418,6 +473,17 @@ export function BookDetailModal({ book, open, onOpenChange }: BookDetailModalPro
                 )}
               </div>
 
+              {excerptAvailable && (
+                <button
+                  onClick={() => setExcerptOpen(true)}
+                  className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-sm border border-gold-soft text-gold hover:text-gold-bright hover:border-gold hover:bg-gold/5 font-ui text-[0.66rem] uppercase tracking-widest-2 transition-all"
+                  aria-label={`Read an excerpt from ${book.title}`}
+                >
+                  <BookOpen className="h-3.5 w-3.5" />
+                  Read Excerpt
+                </button>
+              )}
+
               <a
                 href={bookShareUrl(book)}
                 className="font-ui text-[0.66rem] uppercase tracking-widest-2 text-muted-warm hover:text-gold-bright transition-colors px-3 py-2.5 inline-flex items-center gap-1.5"
@@ -436,5 +502,9 @@ export function BookDetailModal({ book, open, onOpenChange }: BookDetailModalPro
         </div>
       </DialogContent>
     </Dialog>
+
+    {/* Excerpt viewer — rendered as a sibling so it can stack above */}
+    {excerptViewer}
+    </>
   );
 }

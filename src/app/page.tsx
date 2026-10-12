@@ -18,6 +18,7 @@ import { SectionDivider } from "@/components/site/SectionDivider";
 import { CartDrawer } from "@/components/site/CartDrawer";
 import { CheckoutDialog } from "@/components/site/CheckoutDialog";
 import { OrderHistoryDialog } from "@/components/site/OrderHistoryDialog";
+import { WishlistDialog } from "@/components/site/WishlistDialog";
 import { RecentlyViewed } from "@/components/site/RecentlyViewed";
 
 export default function Home() {
@@ -50,6 +51,7 @@ export default function Home() {
       <CartDrawer />
       <CheckoutDialog />
       <OrderHistoryDialog />
+      <WishlistDialog />
     </div>
   );
 }

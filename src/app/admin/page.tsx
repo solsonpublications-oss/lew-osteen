@@ -1,16 +1,34 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Users, Mail, Download, LogOut, RefreshCw, Lock, ShieldCheck, FileDown } from "lucide-react";
+import {
+  Users, Mail, Download, LogOut, RefreshCw, Lock, ShieldCheck, FileDown,
+  ShoppingBag, DollarSign, BookOpen, Package, TrendingUp,
+} from "lucide-react";
 
 type Subscriber = { email: string; source: string; createdAt: string };
 type ContactMessage = { email: string; message: string; createdAt: string };
 type DownloadStat = { slug: string; label: string; count: number };
+type OrderItem = {
+  bookTitle: string; bookSlug: string; format: string;
+  qty: number; unitPriceCents: number; coverPath?: string | null;
+};
+type Order = {
+  publicId: string; status: string; buyerEmail: string; buyerName: string | null;
+  paymentMethod: string; totalCents: number; totalUSD: string; currency: string;
+  hasPrint: boolean; hasDigital: boolean; luluStatus: string | null; luluRef: string | null;
+  notes: string | null; createdAt: string; items: OrderItem[];
+};
 type AdminData = {
-  stats: { subscribers: number; messages: number; downloads?: number };
+  stats: {
+    subscribers: number; messages: number; downloads?: number;
+    orders: number; revenueCents: number; revenueUSD: string;
+    ebookOrders: number; printOrders: number;
+  };
   downloads?: DownloadStat[];
   subscribers: Subscriber[];
   messages: ContactMessage[];
+  orders: Order[];
 };
 
 export default function AdminPage() {
@@ -19,7 +37,8 @@ export default function AdminPage() {
   const [data, setData] = useState<AdminData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [tab, setTab] = useState<"subscribers" | "messages" | "downloads">("subscribers");
+  const [tab, setTab] = useState<"subscribers" | "messages" | "downloads" | "orders">("orders");
+  const [expandedOrder, setExpandedOrder] = useState<string | null>(null);
 
   // Persist key in sessionStorage so a refresh keeps the session.
   useEffect(() => {
@@ -62,7 +81,7 @@ export default function AdminPage() {
     setData(null);
   };
 
-  const exportCsv = (kind: "subscribers" | "messages" | "downloads") => {
+  const exportCsv = (kind: "subscribers" | "messages" | "downloads" | "orders") => {
     if (!data) return;
     let header = "";
     let rows: string[] = [];
@@ -77,6 +96,22 @@ export default function AdminPage() {
     } else if (kind === "downloads" && data.downloads) {
       header = "asset,label,count";
       rows = data.downloads.map((d) => [d.slug, `"${d.label}"`, String(d.count)].join(","));
+    } else if (kind === "orders") {
+      header = "publicId,status,buyerEmail,buyerName,paymentMethod,totalCents,totalUSD,hasPrint,hasDigital,luluStatus,createdAt,items";
+      rows = data.orders.map((o) => [
+        o.publicId,
+        o.status,
+        o.buyerEmail,
+        `"${(o.buyerName || "").replace(/"/g, '""')}"`,
+        o.paymentMethod,
+        String(o.totalCents),
+        o.totalUSD,
+        String(o.hasPrint),
+        String(o.hasDigital),
+        o.luluStatus || "",
+        o.createdAt,
+        `"${o.items.map((it) => `${it.bookTitle} (${it.format}) x${it.qty}`).join("; ")}"`,
+      ].join(","));
     }
     const csv = [header, ...rows].join("\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
@@ -175,75 +210,61 @@ export default function AdminPage() {
 
       <main className="mx-auto max-w-6xl px-5 sm:px-8 py-10">
         {/* Stats */}
-        <div className="grid sm:grid-cols-3 gap-4 mb-8">
-          <div className="bg-panel/40 border border-gold-soft rounded-sm p-5 flex items-center gap-4">
-            <Users className="h-8 w-8 text-gold" />
-            <div>
-              <div className="font-heading text-gold text-3xl tabular-nums">
-                {data?.stats.subscribers ?? 0}
-              </div>
-              <div className="font-ui text-[0.6rem] uppercase tracking-widest-2 text-muted-warm">
-                Subscribers
-              </div>
-            </div>
-          </div>
-          <div className="bg-panel/40 border border-gold-soft rounded-sm p-5 flex items-center gap-4">
-            <Mail className="h-8 w-8 text-gold" />
-            <div>
-              <div className="font-heading text-gold text-3xl tabular-nums">
-                {data?.stats.messages ?? 0}
-              </div>
-              <div className="font-ui text-[0.6rem] uppercase tracking-widest-2 text-muted-warm">
-                Contact Messages
-              </div>
-            </div>
-          </div>
-          <div className="bg-panel/40 border border-gold-soft rounded-sm p-5 flex items-center gap-4">
-            <Download className="h-8 w-8 text-gold" />
-            <div>
-              <div className="font-heading text-gold text-3xl tabular-nums">
-                {data?.stats.downloads ?? 0}
-              </div>
-              <div className="font-ui text-[0.6rem] uppercase tracking-widest-2 text-muted-warm">
-                Asset Downloads
-              </div>
-            </div>
-          </div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4 mb-8">
+          <StatCard
+            icon={<DollarSign className="h-7 w-7 text-gold" />}
+            value={`$${data?.stats.revenueUSD ?? "0.00"}`}
+            label="Revenue"
+            highlight
+          />
+          <StatCard
+            icon={<ShoppingBag className="h-7 w-7 text-gold" />}
+            value={String(data?.stats.orders ?? 0)}
+            label="Orders"
+          />
+          <StatCard
+            icon={<BookOpen className="h-7 w-7 text-gold" />}
+            value={String(data?.stats.ebookOrders ?? 0)}
+            label="eBook Orders"
+          />
+          <StatCard
+            icon={<Package className="h-7 w-7 text-gold" />}
+            value={String(data?.stats.printOrders ?? 0)}
+            label="Print Orders"
+          />
+          <StatCard
+            icon={<Users className="h-7 w-7 text-gold" />}
+            value={String(data?.stats.subscribers ?? 0)}
+            label="Subscribers"
+          />
+        </div>
+
+        {/* Secondary stats row */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4 mb-8">
+          <MiniStat
+            icon={<Mail className="h-4 w-4 text-gold/70" />}
+            value={String(data?.stats.messages ?? 0)}
+            label="Contact Messages"
+          />
+          <MiniStat
+            icon={<Download className="h-4 w-4 text-gold/70" />}
+            value={String(data?.stats.downloads ?? 0)}
+            label="Asset Downloads"
+          />
+          <MiniStat
+            icon={<TrendingUp className="h-4 w-4 text-gold/70" />}
+            value={`$${data?.stats.orders ? (data.stats.revenueCents / 100 / data.stats.orders).toFixed(2) : "0.00"}`}
+            label="Avg Order Value"
+          />
         </div>
 
         {/* Tabs */}
         <div className="flex items-center justify-between gap-4 mb-4 border-b border-gold-soft">
-          <div className="flex">
-            <button
-              onClick={() => setTab("subscribers")}
-              className={`px-4 py-3 font-ui text-[0.7rem] uppercase tracking-widest-2 transition-colors border-b-2 -mb-px ${
-                tab === "subscribers"
-                  ? "text-gold-bright border-gold"
-                  : "text-muted-warm border-transparent hover:text-cream"
-              }`}
-            >
-              Subscribers ({data?.subscribers.length ?? 0})
-            </button>
-            <button
-              onClick={() => setTab("messages")}
-              className={`px-4 py-3 font-ui text-[0.7rem] uppercase tracking-widest-2 transition-colors border-b-2 -mb-px ${
-                tab === "messages"
-                  ? "text-gold-bright border-gold"
-                  : "text-muted-warm border-transparent hover:text-cream"
-              }`}
-            >
-              Messages ({data?.messages.length ?? 0})
-            </button>
-            <button
-              onClick={() => setTab("downloads")}
-              className={`px-4 py-3 font-ui text-[0.7rem] uppercase tracking-widest-2 transition-colors border-b-2 -mb-px ${
-                tab === "downloads"
-                  ? "text-gold-bright border-gold"
-                  : "text-muted-warm border-transparent hover:text-cream"
-              }`}
-            >
-              Downloads ({data?.downloads?.length ?? 0})
-            </button>
+          <div className="flex flex-wrap">
+            <TabButton tab={tab} value="orders" onClick={setTab} count={data?.orders.length ?? 0} />
+            <TabButton tab={tab} value="subscribers" onClick={setTab} count={data?.subscribers.length ?? 0} />
+            <TabButton tab={tab} value="messages" onClick={setTab} count={data?.messages.length ?? 0} />
+            <TabButton tab={tab} value="downloads" onClick={setTab} count={data?.downloads?.length ?? 0} />
           </div>
           <button
             onClick={() => exportCsv(tab)}
@@ -254,9 +275,15 @@ export default function AdminPage() {
           </button>
         </div>
 
-        {/* Table */}
+        {/* Tables */}
         <div className="bg-panel/30 border border-gold-soft rounded-sm overflow-hidden">
-          {tab === "subscribers" ? (
+          {tab === "orders" ? (
+            <OrdersTable
+              orders={data?.orders ?? []}
+              expandedOrder={expandedOrder}
+              setExpandedOrder={setExpandedOrder}
+            />
+          ) : tab === "subscribers" ? (
             <table className="w-full text-left">
               <thead className="bg-deep/60">
                 <tr className="font-ui text-[0.6rem] uppercase tracking-widest-2 text-gold/70">
@@ -376,5 +403,263 @@ export default function AdminPage() {
         </p>
       </main>
     </div>
+  );
+}
+
+// ============================================================
+// Helper components
+// ============================================================
+
+function StatCard({
+  icon, value, label, highlight,
+}: {
+  icon: React.ReactNode;
+  value: string;
+  label: string;
+  highlight?: boolean;
+}) {
+  return (
+    <div
+      className={`rounded-sm p-4 sm:p-5 flex items-center gap-3 sm:gap-4 border transition-all ${
+        highlight
+          ? "bg-gradient-to-br from-gold/15 to-transparent border-gold/50 shadow-[0_0_20px_-8px_rgba(217,178,107,0.5)]"
+          : "bg-panel/40 border-gold-soft"
+      }`}
+    >
+      <div className="flex-shrink-0">{icon}</div>
+      <div className="min-w-0">
+        <div className={`font-heading tabular-nums truncate ${highlight ? "text-gold-bright text-2xl sm:text-3xl" : "text-gold text-xl sm:text-2xl"}`}>
+          {value}
+        </div>
+        <div className="font-ui text-[0.56rem] sm:text-[0.6rem] uppercase tracking-widest-2 text-muted-warm truncate">
+          {label}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MiniStat({
+  icon, value, label,
+}: {
+  icon: React.ReactNode;
+  value: string;
+  label: string;
+}) {
+  return (
+    <div className="rounded-sm p-3 border border-gold-soft/60 bg-deep/40 flex items-center gap-3">
+      <div className="flex-shrink-0">{icon}</div>
+      <div className="min-w-0">
+        <div className="font-heading text-cream text-lg tabular-nums truncate">{value}</div>
+        <div className="font-ui text-[0.54rem] uppercase tracking-widest-2 text-muted-warm truncate">
+          {label}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TabButton({
+  tab, value, onClick, count,
+}: {
+  tab: string;
+  value: "orders" | "subscribers" | "messages" | "downloads";
+  onClick: (v: typeof value) => void;
+  count: number;
+}) {
+  const active = tab === value;
+  return (
+    <button
+      onClick={() => onClick(value)}
+      className={`px-3 sm:px-4 py-3 font-ui text-[0.62rem] sm:text-[0.7rem] uppercase tracking-widest-2 transition-colors border-b-2 -mb-px ${
+        active
+          ? "text-gold-bright border-gold"
+          : "text-muted-warm border-transparent hover:text-cream"
+      }`}
+    >
+      {value} ({count})
+    </button>
+  );
+}
+
+function OrdersTable({
+  orders, expandedOrder, setExpandedOrder,
+}: {
+  orders: Order[];
+  expandedOrder: string | null;
+  setExpandedOrder: (id: string | null) => void;
+}) {
+  if (orders.length === 0) {
+    return (
+      <div className="px-4 py-12 text-center">
+        <ShoppingBag className="h-10 w-10 text-gold/40 mx-auto mb-3" />
+        <p className="font-body text-muted-warm italic">No orders yet.</p>
+        <p className="font-ui text-[0.6rem] uppercase tracking-widest-2 text-muted-warm/60 mt-2">
+          Orders placed on the storefront will appear here.
+        </p>
+      </div>
+    );
+  }
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-left min-w-[700px]">
+        <thead className="bg-deep/60">
+          <tr className="font-ui text-[0.58rem] uppercase tracking-widest-2 text-gold/70">
+            <th className="px-4 py-3">Order</th>
+            <th className="px-4 py-3">Buyer</th>
+            <th className="px-4 py-3">Payment</th>
+            <th className="px-4 py-3">Type</th>
+            <th className="px-4 py-3">Lulu</th>
+            <th className="px-4 py-3 text-right">Total</th>
+            <th className="px-4 py-3">Date</th>
+          </tr>
+        </thead>
+        <tbody>
+          {orders.map((o, i) => {
+            const expanded = expandedOrder === o.publicId;
+            return (
+              <FragmentRow key={o.publicId} index={i}>
+                <tr
+                  className={`cursor-pointer hover:bg-gold/5 transition-colors ${expanded ? "bg-gold/5" : ""}`}
+                  onClick={() => setExpandedOrder(expanded ? null : o.publicId)}
+                >
+                  <td className="px-4 py-3">
+                    <div className="font-heading text-gold-bright text-sm tracking-widest">{o.publicId}</div>
+                    <div className="font-ui text-[0.56rem] uppercase tracking-widest-2 text-muted-warm mt-0.5">
+                      {o.items.length} {o.items.length === 1 ? "item" : "items"}
+                    </div>
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="font-body text-cream/90 text-sm truncate max-w-[160px]">{o.buyerEmail}</div>
+                    {o.buyerName && (
+                      <div className="font-ui text-[0.56rem] uppercase tracking-widest-2 text-muted-warm truncate max-w-[160px]">
+                        {o.buyerName}
+                      </div>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className={`font-ui text-[0.56rem] uppercase tracking-widest-2 px-2 py-1 rounded-full border ${
+                      o.paymentMethod === "stripe"
+                        ? "border-[#635BFF]/50 text-[#a59bff] bg-[#635BFF]/10"
+                        : o.paymentMethod === "paypal"
+                        ? "border-[#0070ba]/50 text-[#5b9bd5] bg-[#0070ba]/10"
+                        : "border-gold-soft text-muted-warm"
+                    }`}>
+                      {o.paymentMethod}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex flex-col gap-1">
+                      {o.hasDigital && (
+                        <span className="font-ui text-[0.54rem] uppercase tracking-widest-2 px-1.5 py-0.5 rounded-full bg-gold/10 border border-gold/30 text-gold-bright inline-flex items-center gap-1 w-fit">
+                          <BookOpen className="h-2.5 w-2.5" /> eBook
+                        </span>
+                      )}
+                      {o.hasPrint && (
+                        <span className="font-ui text-[0.54rem] uppercase tracking-widest-2 px-1.5 py-0.5 rounded-full bg-space-blue/20 border border-space-blue/40 text-cream/90 inline-flex items-center gap-1 w-fit">
+                          <Package className="h-2.5 w-2.5" /> Print
+                        </span>
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-4 py-3">
+                    {o.luluStatus ? (
+                      <span className={`font-ui text-[0.56rem] uppercase tracking-widest-2 px-2 py-1 rounded-full border ${
+                        o.luluStatus === "demo"
+                          ? "border-gold-soft/50 text-muted-warm bg-deep/40"
+                          : o.luluStatus === "acknowledged"
+                          ? "border-emerald-500/40 text-emerald-300 bg-emerald-500/10"
+                          : "border-ember/40 text-ember bg-ember/10"
+                      }`}>
+                        {o.luluStatus}
+                      </span>
+                    ) : (
+                      <span className="font-ui text-[0.56rem] text-muted-warm/40">—</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <div className="font-heading text-gold-bright text-base tabular-nums">${o.totalUSD}</div>
+                    <div className="font-ui text-[0.54rem] uppercase tracking-widest-2 text-muted-warm">{o.currency}</div>
+                  </td>
+                  <td className="px-4 py-3 whitespace-nowrap">
+                    <div className="font-ui text-[0.66rem] text-cream/80">
+                      {new Date(o.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                    </div>
+                    <div className="font-ui text-[0.56rem] text-muted-warm">
+                      {new Date(o.createdAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
+                    </div>
+                  </td>
+                </tr>
+                {expanded && (
+                  <tr className="bg-deep/60">
+                    <td colSpan={7} className="px-4 py-4 border-t border-gold-soft/40">
+                      <div className="grid sm:grid-cols-2 gap-4">
+                        {/* Items list */}
+                        <div>
+                          <h4 className="font-ui text-[0.58rem] uppercase tracking-widest-2 text-gold/80 mb-2">Items</h4>
+                          <ul className="space-y-2">
+                            {o.items.map((it, j) => (
+                              <li key={j} className="flex items-center gap-2">
+                                {it.coverPath ? (
+                                  <img src={it.coverPath} alt="" className="h-10 w-7 object-cover rounded-sm frame-gold flex-shrink-0" />
+                                ) : (
+                                  <div className="h-10 w-7 bg-deep rounded-sm border border-gold-soft flex-shrink-0" />
+                                )}
+                                <div className="flex-1 min-w-0">
+                                  <div className="font-heading text-cream text-[0.74rem] uppercase tracking-wide truncate">{it.bookTitle}</div>
+                                  <div className="font-ui text-[0.54rem] uppercase tracking-widest-2 text-gold/70">
+                                    {it.format} × {it.qty} · ${(it.unitPriceCents / 100).toFixed(2)} each
+                                  </div>
+                                </div>
+                                <div className="font-heading text-cream text-sm tabular-nums">
+                                  ${((it.unitPriceCents * it.qty) / 100).toFixed(2)}
+                                </div>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                        {/* Order meta */}
+                        <div className="space-y-3">
+                          {o.luluRef && (
+                            <div>
+                              <h4 className="font-ui text-[0.58rem] uppercase tracking-widest-2 text-gold/80 mb-1">Lulu Reference</h4>
+                              <code className="font-ui text-[0.66rem] text-cream bg-deep px-2 py-1 rounded border border-gold-soft">
+                                {o.luluRef}
+                              </code>
+                            </div>
+                          )}
+                          {o.notes && (
+                            <div>
+                              <h4 className="font-ui text-[0.58rem] uppercase tracking-widest-2 text-gold/80 mb-1">Notes</h4>
+                              <p className="font-body text-[0.74rem] text-cream/80 italic leading-relaxed">{o.notes}</p>
+                            </div>
+                          )}
+                          <div>
+                            <h4 className="font-ui text-[0.58rem] uppercase tracking-widest-2 text-gold/80 mb-1">Status</h4>
+                            <span className="font-ui text-[0.6rem] uppercase tracking-widest-2 px-2 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/40 text-emerald-300">
+                              {o.status}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </FragmentRow>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// React.Fragment wrapper that doesn't render a DOM node but lets us return 1-2 <tr> from .map.
+function FragmentRow({ children, index }: { children: React.ReactNode; index: number }) {
+  return (
+    <>
+      {index > 0 && <tr className="border-t border-gold-soft/30" aria-hidden="true" />}
+      {children}
+    </>
   );
 }

@@ -1,27 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import path from "path";
 import { db } from "@/lib/db";
 
 // GET /api/admin/data?key=<ADMIN_KEY>
-// Returns subscribers + contact messages + download counts for the admin dashboard.
+// Returns subscribers + contact messages + download counts + orders for the admin dashboard.
 // Protected by a shared secret passed via ?key= (compared with env var
 // ADMIN_KEY). In dev, falls back to a default if unset so the dashboard is
 // reachable locally — MUST set ADMIN_KEY in production.
 const DEFAULT_DEV_KEY = "dev-admin-key";
-
-// Lazy better-sqlite3 loader (avoids loading it on routes that don't need it).
-let _rawDb: import("better-sqlite3").Database | null = null;
-function rawDb() {
-  if (_rawDb) return _rawDb;
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const Database = require("better-sqlite3");
-  const url = process.env.DATABASE_URL || "";
-  const match = url.match(/^file:(.+)$/);
-  const p = match ? match[1] : "db/custom.db";
-  const dbPath = path.isAbsolute(p) ? p : path.resolve(process.cwd(), p);
-  _rawDb = new Database(dbPath, { readonly: true });
-  return _rawDb;
-}
 
 const DOWNLOAD_ASSETS = [
   { slug: "book-cover", label: "Book Cover" },
@@ -49,29 +34,51 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const [subscribers, messages, subCount, msgCount] = await Promise.all([
+  // Pull subscribers, messages, orders + counts in parallel.
+  const [
+    subscribers,
+    messages,
+    orders,
+    subCount,
+    msgCount,
+    orderCount,
+    downloadGroups,
+    revenueAgg,
+  ] = await Promise.all([
     db.subscriber.findMany({ orderBy: { createdAt: "desc" }, take: 500 }),
     db.contactMessage.findMany({ orderBy: { createdAt: "desc" }, take: 500 }),
+    db.order.findMany({
+      orderBy: { createdAt: "desc" },
+      take: 200,
+      include: { items: true },
+    }),
     db.subscriber.count(),
     db.contactMessage.count(),
+    db.order.count(),
+    db.downloadEvent.groupBy({
+      by: ["asset"],
+      _count: { _all: true },
+    }),
+    // Aggregate total revenue across ALL orders (not just the 200 we display).
+    db.order.aggregate({ _sum: { totalCents: true } }),
   ]);
 
-  // Download counts via raw SQL (the DownloadEvent table).
-  let downloads: { slug: string; label: string; count: number }[] = [];
+  // Map download counts to the asset labels.
+  const downloadCountMap = new Map<string, number>(
+    downloadGroups.map((g) => [g.asset, g._count._all])
+  );
   let totalDownloads = 0;
-  try {
-    const rdb = rawDb();
-    downloads = DOWNLOAD_ASSETS.map((a) => {
-      const row = rdb
-        .prepare("SELECT COUNT(*) as count FROM DownloadEvent WHERE asset = ?")
-        .get(a.slug) as { count: number } | undefined;
-      const count = row?.count ?? 0;
-      totalDownloads += count;
-      return { slug: a.slug, label: a.label, count };
-    });
-  } catch (err) {
-    console.error("[/api/admin/data] download query failed:", err);
-  }
+  const downloads = DOWNLOAD_ASSETS.map((a) => {
+    const count = downloadCountMap.get(a.slug) || 0;
+    totalDownloads += count;
+    return { slug: a.slug, label: a.label, count };
+  });
+
+  // Orders revenue summary — from the authoritative aggregate, not the
+  // capped display list, so the dashboard total always matches reality.
+  const revenueCents = revenueAgg._sum.totalCents || 0;
+  const ebookOrders = orders.filter((o) => o.hasDigital).length;
+  const printOrders = orders.filter((o) => o.hasPrint).length;
 
   return NextResponse.json({
     ok: true,
@@ -79,6 +86,11 @@ export async function GET(req: NextRequest) {
       subscribers: subCount,
       messages: msgCount,
       downloads: totalDownloads,
+      orders: orderCount,
+      revenueCents,
+      revenueUSD: (revenueCents / 100).toFixed(2),
+      ebookOrders,
+      printOrders,
     },
     downloads,
     subscribers: subscribers.map((s) => ({
@@ -90,6 +102,30 @@ export async function GET(req: NextRequest) {
       email: m.email,
       message: m.message,
       createdAt: m.createdAt,
+    })),
+    orders: orders.map((o) => ({
+      publicId: o.publicId,
+      status: o.status,
+      buyerEmail: o.buyerEmail,
+      buyerName: o.buyerName,
+      paymentMethod: o.paymentMethod,
+      totalCents: o.totalCents,
+      totalUSD: (o.totalCents / 100).toFixed(2),
+      currency: o.currency,
+      hasPrint: o.hasPrint,
+      hasDigital: o.hasDigital,
+      luluStatus: o.luluStatus,
+      luluRef: o.luluRef,
+      notes: o.notes,
+      createdAt: o.createdAt,
+      items: o.items.map((it) => ({
+        bookTitle: it.bookTitle,
+        bookSlug: it.bookSlug,
+        format: it.format,
+        qty: it.quantity,
+        unitPriceCents: it.unitPriceCents,
+        coverPath: it.coverPath,
+      })),
     })),
   });
 }

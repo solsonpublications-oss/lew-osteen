@@ -64,7 +64,13 @@ function validateShippingAddress(a: IncomingAddress | null | undefined): Shippin
 }
 
 function toEmailItem(it: ValidatedItem): EmailItem {
-  return { bookTitle: it.bookTitle, format: it.format };
+  return {
+    bookTitle: it.bookTitle,
+    format: it.format,
+    coverPath: it.coverPath,
+    unitPriceCents: it.unitPriceCents,
+    qty: it.qty,
+  };
 }
 
 export async function POST(req: NextRequest) {
@@ -251,6 +257,9 @@ export async function POST(req: NextRequest) {
         ebookEmailItems.push({
           bookTitle: it.bookTitle,
           format: it.format,
+          coverPath: it.coverPath,
+          unitPriceCents: it.unitPriceCents,
+          qty: it.qty,
           downloadUrl: `${siteUrl}/api/ebook/download?token=${token}`,
         });
       }

@@ -11,7 +11,7 @@
 import "server-only";
 
 import nodemailer, { type TransportOptions } from "nodemailer";
-import { getSMTPConfig, getAuthorEmail } from "./config";
+import { getSMTPConfig, getAuthorEmail, getSiteUrl } from "./config";
 
 export type Address = string;
 
@@ -25,6 +25,12 @@ export type SendMailResult = {
 export type EmailItem = {
   bookTitle: string;
   format: string;
+  /** Optional cover image URL (absolute or site-relative) for richer emails. */
+  coverPath?: string;
+  /** Optional unit price in cents — shown in the email receipt. */
+  unitPriceCents?: number;
+  /** Optional quantity. */
+  qty?: number;
 };
 
 export type EbookEmailItem = EmailItem & {
@@ -119,14 +125,32 @@ function escapeHtml(s: string): string {
     .replace(/'/g, "&#39;");
 }
 
-function itemRow(item: { bookTitle: string; format: string }): string {
+function itemRow(item: EmailItem): string {
+  const siteUrl = getSiteUrl();
+  const coverUrl = item.coverPath
+    ? (item.coverPath.startsWith("http")
+        ? item.coverPath
+        : `${siteUrl}${item.coverPath.startsWith("/") ? "" : "/"}${item.coverPath}`)
+    : null;
+  const priceLine = item.unitPriceCents != null
+    ? `$${(item.unitPriceCents / 100).toFixed(2)}${item.qty && item.qty > 1 ? ` × ${item.qty}` : ""}`
+    : null;
   return `
     <tr>
-      <td style="padding:12px 0;border-bottom:1px solid ${BORDER};color:${CREAM};">
-        <div style="font-size:15px;color:${CREAM};">${escapeHtml(item.bookTitle)}</div>
-        <div style="font-size:12px;color:${MUTED};margin-top:2px;letter-spacing:0.4px;text-transform:uppercase;">
-          ${escapeHtml(item.format)}
-        </div>
+      <td style="padding:12px 0;border-bottom:1px solid ${BORDER};">
+        <table role="presentation" cellpadding="0" cellspacing="0" width="100%">
+          <tr>
+            ${coverUrl ? `<td style="width:54px;vertical-align:top;padding-right:14px;">
+              <img src="${escapeHtml(coverUrl)}" alt="" width="44" height="62" style="display:block;width:44px;height:62px;border:1px solid ${GOLD};border-radius:2px;object-fit:cover;" />
+            </td>` : ""}
+            <td style="vertical-align:top;color:${CREAM};">
+              <div style="font-size:15px;color:${CREAM};font-family:Georgia,serif;">${escapeHtml(item.bookTitle)}</div>
+              <div style="font-size:11px;color:${MUTED};margin-top:3px;letter-spacing:0.6px;text-transform:uppercase;">
+                ${escapeHtml(item.format)}${priceLine ? ` &middot; ${priceLine}` : ""}
+              </div>
+            </td>
+          </tr>
+        </table>
       </td>
     </tr>`;
 }
@@ -164,8 +188,11 @@ export async function sendMail(args: {
 }): Promise<SendMailResult> {
   const cfg = getSMTPConfig();
   if (cfg.isDemo) {
+    // In demo mode we log both the text summary and a marker that the
+    // rich HTML version (with book covers, gold-themed buttons, etc.)
+    // would have been sent. The full HTML is too verbose for the dev log.
     console.log(
-      `\n[EMAIL:DEMO] to: ${args.to}\nsubject: ${args.subject}\n----\n${args.text || args.html}\n----\n`
+      `\n[EMAIL:DEMO] to: ${args.to}\nsubject: ${args.subject}\n----\n${args.text || args.html}\n----\n[HTML version: ${args.html.length} bytes — includes ${args.html.includes("<img") ? "cover images + " : ""}themed layout]\n`
     );
     return { ok: true, demo: true, message: "logged" };
   }
@@ -198,34 +225,57 @@ export async function sendBuyerEbookEmail(args: {
   orderId: string;
   items: EbookEmailItem[];
 }): Promise<SendMailResult> {
+  const siteUrl = getSiteUrl();
   const greeting = args.buyerName
     ? `Dear ${escapeHtml(args.buyerName)},`
     : "Dear reader,";
   const rows = args.items
     .map(
-      (it) => `
+      (it) => {
+        const coverUrl = it.coverPath
+          ? (it.coverPath.startsWith("http")
+              ? it.coverPath
+              : `${siteUrl}${it.coverPath.startsWith("/") ? "" : "/"}${it.coverPath}`)
+          : null;
+        const priceLine = it.unitPriceCents != null
+          ? `$${(it.unitPriceCents / 100).toFixed(2)}${it.qty && it.qty > 1 ? ` × ${it.qty}` : ""}`
+          : null;
+        return `
       <tr>
         <td style="padding:14px 0;border-bottom:1px solid ${BORDER};">
-          <div style="font-size:16px;color:${CREAM};">${escapeHtml(it.bookTitle)}</div>
-          <div style="font-size:12px;color:${MUTED};margin-top:2px;letter-spacing:0.4px;text-transform:uppercase;">
-            ${escapeHtml(it.format)}
-          </div>
-          <div style="margin-top:10px;">${button(it.downloadUrl, "Download eBook")}</div>
+          <table role="presentation" cellpadding="0" cellspacing="0" width="100%">
+            <tr>
+              ${coverUrl ? `<td style="width:60px;vertical-align:top;padding-right:14px;">
+                <img src="${escapeHtml(coverUrl)}" alt="" width="50" height="70" style="display:block;width:50px;height:70px;border:1px solid ${GOLD};border-radius:2px;object-fit:cover;" />
+              </td>` : ""}
+              <td style="vertical-align:top;">
+                <div style="font-size:16px;color:${CREAM};font-family:Georgia,serif;">${escapeHtml(it.bookTitle)}</div>
+                <div style="font-size:11px;color:${MUTED};margin-top:3px;letter-spacing:0.6px;text-transform:uppercase;">
+                  ${escapeHtml(it.format)}${priceLine ? ` &middot; ${priceLine}` : ""}
+                </div>
+                <div style="margin-top:12px;">${button(it.downloadUrl, "Download eBook")}</div>
+                <div style="font-size:10px;color:${MUTED};margin-top:6px;letter-spacing:0.4px;">
+                  Link valid for 7 days &middot; ${escapeHtml(it.downloadUrl)}
+                </div>
+              </td>
+            </tr>
+          </table>
         </td>
-      </tr>`
+      </tr>`;
+      }
     )
     .join("");
 
   const body = `
     ${paragraph(greeting)}
     ${paragraph(
-      "Thank you for your purchase. Your eBook is ready &mdash; use the link below each title to download your copy. The link is valid for 7 days."
+      "Thank you for your purchase. Your eBook is ready &mdash; use the button below each title to download your copy. The link is valid for 7 days."
     )}
     <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin-top:8px;">
       ${rows}
     </table>
     ${paragraph(
-      `Order reference: <span style="color:${GOLD};">${escapeHtml(args.orderId)}</span>`
+      `Order reference: <span style="color:${GOLD};font-family:Georgia,serif;">${escapeHtml(args.orderId)}</span>`
     )}
     ${paragraph(
       "If you have any trouble with your download, just reply to this email and Lew will get you sorted."

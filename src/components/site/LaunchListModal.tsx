@@ -21,9 +21,12 @@ export function LaunchListModal() {
   const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
 
   // Pull UI state so we can suppress the launch modal whenever a more
-  // important dialog (book detail, cart drawer, checkout) is open.
+  // important dialog (book detail, cart drawer, checkout, order history,
+  // wishlist) is open.
   const cartOpen = useUI((s) => s.cartOpen);
   const checkoutOpen = useUI((s) => s.checkoutOpen);
+  const orderHistoryOpen = useUI((s) => s.orderHistoryOpen);
+  const wishlistOpen = useUI((s) => s.wishlistOpen);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -77,7 +80,7 @@ export function LaunchListModal() {
   // while the launch modal is showing — the commerce flow takes priority.
   // We compute this during render (no setState-in-effect) and reset the
   // open flag + localStorage when the dismissal condition is met.
-  if (open && (cartOpen || checkoutOpen)) {
+  if (open && (cartOpen || checkoutOpen || orderHistoryOpen || wishlistOpen)) {
     setOpen(false);
     if (typeof window !== "undefined") {
       localStorage.setItem(STORAGE_KEY, String(Date.now()));

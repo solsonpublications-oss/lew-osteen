@@ -204,3 +204,90 @@ Stage Summary:
 - 8 new CSS animations + utility classes added for micro-interactions (badge pop, check pulse, coupon flash, card lift, button press, focus rings).
 - The original site (Hero, About, Coming Soon, Bookshelf, Footer, all decorative components) remains 100% intact — every change is additive.
 - Ready for the next round: live Stripe Payment Element + PayPal SDK buttons (when keys land), admin order-list view under /admin, refining email templates, more coupon codes, signed-copy upsell.
+
+---
+Task ID: 11 (web dev review cron — round 2)
+Agent: main (Z.ai Code)
+Task: QA pass + critical bug fix (admin dashboard was broken) + 4 new features (Admin orders/revenue view, Wishlist, Read Excerpt viewer, Book reviews) + email template refinement + styling polish.
+
+Work Log:
+
+### QA pass (agent-browser)
+- Lint check passed clean.
+- Loaded the homepage and confirmed the navbar + cart button render.
+- Opened `/admin` — found a **critical build error**: "Module not found: Can't resolve 'better-sqlite3'" — the admin API route was `require("better-sqlite3")` for raw SQL on the DownloadEvent table, but that package isn't installed. The admin dashboard was completely broken.
+
+### Critical bug fix
+- Rewrote `src/app/api/admin/data/route.ts` to drop the better-sqlite3 dependency entirely and use Prisma's native `db.downloadEvent.groupBy({ by: ["asset"], _count: { _all: true } })` for download counts. Removed the raw-SQL code path. Restarted the dev server (Turbopack had cached the broken module — cleared `.next/`).
+- Fixed an "Avg Order Value" calculation bug discovered via VLM inspection: was computing `revenueCents / orders` (treating cents as dollars). Switched to `revenueCents / 100 / orders`.
+- Also fixed a more subtle issue: `revenueCents` was computed from the 200 most-recent orders (`take: 200`), but `orderCount` came from `db.order.count()` (total). Now uses `db.order.aggregate({ _sum: { totalCents: true } })` so the revenue total always matches the order count, regardless of how many orders exist.
+
+### New feature: Admin Orders + Revenue dashboard
+- Extended `GET /api/admin/data` to also return the 200 most recent orders (with items) + revenue aggregation + ebook/print order counts.
+- Updated `src/app/admin/page.tsx`:
+  - 5 stat cards at top: **Revenue** (highlighted, gold gradient), **Orders**, **eBook Orders**, **Print Orders**, **Subscribers**.
+  - 3 mini-stats below: Contact Messages, Asset Downloads, Avg Order Value.
+  - New **Orders** tab (default selected) with a full table: Order ID, Buyer (email + name), Payment method (Stripe/PayPal/demo colored badges), Type (eBook/Print badges), Lulu status (demo/acknowledged/etc.), Total, Date. Click any row to expand → shows items with covers + prices, Lulu reference, coupon notes, status.
+  - Refactored StatCard / MiniStat / TabButton / OrdersTable / FragmentRow helper components for clean composition.
+  - Added CSV export for orders (with all fields including items as a semicolon-separated list).
+- Verified end-to-end: login → dashboard shows $127.92 revenue, 7 orders, 5 ebook orders, 2 print orders, avg $18.27. First order `LO-9BL59K67` expandable to show "Coupon WELCOME10 applied — saved $1.00".
+
+### New feature: Wishlist / Favorites
+- Created `src/lib/wishlist-store.ts` (Zustand + persist to localStorage). Tracks wishlisted books by slug, de-duped, newest first. Exposes `toggle(book)`, `has(slug)`, `remove(slug)`, `clear()`, `items`, `hydrated`.
+- Extended `src/lib/ui-store.ts` with `wishlistOpen` state + open/close/toggle actions.
+- Built `src/components/site/WishlistDialog.tsx` — full dialog listing wishlisted books. Each row has cover thumbnail, title, genre, "from $X.XX" price, "Add to cart" (quick-add the cheapest format), "View" (opens BookDetailModal), and a remove button. Empty state: "Your wishlist is empty — browse the bookshelf".
+- Added a **Heart** button to the BookDetailModal action row (between the buy panel and "Also on Amazon"). Clicking toggles the wishlist state with a sonner toast + "View" action. When wishlisted, the heart fills with ember color + plays a `heart-beat` animation.
+- Added a Heart icon button to the Navbar (before the Order history button) with an ember-gradient badge showing the count (only renders once hydrated + has items).
+- Updated LaunchListModal to also auto-close when the wishlist dialog opens.
+- Verified end-to-end: opened a book → clicked "Save" → heart filled + badge appeared on navbar heart → opened wishlist dialog → "1 book saved for later" with cover + "Add to cart" + "View" + Clear all.
+
+### New feature: Read Excerpt sample chapter viewer
+- Created `src/data/excerpts.ts` with 8 sample excerpts (3-paragraph passages) for: The Judgement, The Cure, The Apocalypse Cometh, Six Notch Road, A Yellow Cotton Dress, Venus Noire, Wigglewagglewattamus, The Little Rabbit. Each has a chapter title + 3 pages of prose.
+- Built `src/components/site/ExcerptViewer.tsx` — a dedicated Dialog that stacks above the BookDetailModal. Header shows the book cover thumbnail + "EXCERPT" label + title + chapter title + close button. Reading area renders the current page with a decorative drop cap on page 1 (large gold "T" floated left). Footer has Prev/Next buttons + a gold progress bar showing "1 of 3". Attribution footer: "Excerpt from {title} by Lew Osteen. Continued in the full edition."
+- Added a "Read Excerpt" button to the BookDetailModal action row (only renders when an excerpt exists for the book).
+- Refactored the BookDetailModal return to use a Fragment so the ExcerptViewer can render as a sibling (Radix Dialog doesn't nest well when both need to be open simultaneously).
+- Verified: opened The Judgement → clicked "Read Excerpt" → second dialog opened above the first showing Chapter One — The Last Day with the drop cap + 1 of 3 pagination.
+
+### New feature: Book reviews / ratings
+- Created `src/lib/reviews-store.ts` (Zustand + persist to localStorage). Each review has `{ id, slug, author, rating 1-5, title, body, createdAt }`. Exposes `addReview`, `removeReview`, `getBySlug`, `getAverage`, `reviews`, `hydrated`.
+- Built `src/components/site/ReviewsSection.tsx` — embedded in the BookDetailModal below the buy panel. Shows the aggregate rating (gold stars + "5.0 · 1 review"), a "Write a review" toggle button, a collapsible form (name, star rating with hover preview, optional title, body with min 10 chars + 1000 char limit + live counter), and a scrollable list of reviews. Each review card shows the author name, star rating, date, italic title, and body. Users can delete their own reviews.
+- Verified: opened The Judgement → clicked "Write a review" → filled name "Jane R.", rating 5 stars, title "A haunting, beautiful read", body "This book kept me up all night..." → clicked "Post review" → toast "Review added" → reviews section now shows 5.0 average + the new review with stars + date.
+
+### Email template refinement
+- Extended the `EmailItem` type to optionally include `coverPath`, `unitPriceCents`, `qty`.
+- Updated `POST /api/orders` to populate these fields on every email item (ebook + print).
+- Rewrote the `itemRow` helper + the ebook email rows to render a 2-column layout: book cover thumbnail (44x62px, gold-framed) on the left, title + format + price on the right. Cover image URLs are made absolute using `getSiteUrl()` so they resolve in email clients.
+- Updated the demo-mode email logger to report "[HTML version: NNNN bytes — includes cover images + themed layout]" so devs can see at a glance that the rich HTML was generated (without flooding the log with HTML).
+- Verified: placed a test order → server log shows "[HTML version: 4661 bytes — includes cover images + themed layout]".
+
+### Styling polish (10 new CSS animations)
+- Added 10 new keyframe animations + utility classes to `globals.css`:
+  - `modal-slide-in` — book detail modal entrance (fade + slide up + scale).
+  - `format-radio-card` — format selector cards lift on hover.
+  - `star-pop` — review stars pop on click.
+  - `heart-beat` — wishlist heart beats when toggled on.
+  - `skeleton` — skeleton loading pulse.
+  - `receipt-enter` — order receipt rows slide in from left.
+  - `nav-link-gold-underline` — animated gold underline on nav links.
+  - `fab-shadow` — floating action button with gold-tinted shadow.
+  - `reveal-stagger` — staggered section reveal (6 children).
+  - `lulu-shimmer` — animated space-blue gradient for print-on-demand badges.
+- Applied `format-radio-card` to the format selector buttons + `heart-beat` to the wishlist heart in BookDetailModal.
+
+### End-to-end verification (agent-browser)
+- Opened admin page → logged in with `dev-admin-key` → dashboard loaded with 8 stat cards (Revenue $127.92, Orders 7, eBook 5, Print 2, Subscribers 13, Messages 2, Downloads 4, Avg $18.27). Orders tab selected by default with 7 rows. Expanded `LO-9BL59K67` → showed items + "Coupon WELCOME10 applied — saved $1.00" notes.
+- Opened homepage → opened The Judgement → confirmed BUY panel + READER REVIEWS section + SAVE heart button + READ EXCERPT button all render.
+- Clicked READ EXCERPT → second dialog opened above showing "Chapter One — The Last Day" with drop cap + 1 of 3 pagination.
+- Clicked SAVE heart → heart filled ember + heart-beat animation played + navbar heart badge showed "1".
+- Opened wishlist dialog → showed "1 book saved for later" with cover + "Add to cart" + "View" + Clear all.
+- Opened a book → clicked "Write a review" → filled name + 5 stars + title + body → posted → reviews section updated with 5.0 average + the new review.
+- `bun run lint` passes with 0 errors and 0 warnings.
+- No runtime errors in the dev log.
+
+Stage Summary:
+- **Critical bug fixed**: admin dashboard was completely broken by a `better-sqlite3` import; now uses Prisma natively + adds full orders/revenue view.
+- **4 new features shipped**: Admin Orders + Revenue dashboard, Wishlist/Favorites (heart + dialog + navbar badge), Read Excerpt viewer (8 sample chapters with drop cap + pagination), Book Reviews (5-star ratings + written reviews with form).
+- **Email templates refined**: now include book cover thumbnails + prices + format in a 2-column layout.
+- **10 new CSS animations** added for micro-interactions.
+- The original site (Hero, About, Coming Soon, Bookshelf, Footer) remains 100% intact — every change is additive.
+- Ready for the next round: live Stripe Payment Element + PayPal SDK buttons (when keys land), server-side reviews persistence (migrate localStorage reviews to Prisma), book bundles/series discounts, gift card system, author analytics charts.
