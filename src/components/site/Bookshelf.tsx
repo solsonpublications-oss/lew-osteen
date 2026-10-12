@@ -1,13 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, ExternalLink, Info, Shuffle } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ChevronLeft, ChevronRight, ExternalLink, Info, Shuffle, Search, X, ArrowDownWideNarrow } from "lucide-react";
 import { books, type Book, type Genre, GENRES } from "@/data/books";
 import { BookCover } from "./BookCover";
 import { BookDetailModal } from "./BookDetailModal";
 import { RevealOnScroll } from "./RevealOnScroll";
 import { SectionHeading } from "./SectionHeading";
 import { useRecentlyViewed } from "@/lib/recently-viewed-store";
+import { cn } from "@/lib/utils";
 
 const SPEED_PX_PER_SEC = 48; // slow drift
 const RESUME_DELAY_MS = 3000;
@@ -37,6 +38,20 @@ export function Bookshelf() {
 
   // Genre filter state. "All" shows every book.
   const [activeGenre, setActiveGenre] = useState<Genre | "All">("All");
+  // Search query (title, subtitle, description).
+  const [search, setSearch] = useState("");
+  // Sort order.
+  const [sort, setSort] = useState<"default" | "price-asc" | "price-desc" | "title-asc" | "year-desc">("default");
+  // Price range filter (max price; uses the cheapest format per book).
+  const [maxPrice, setMaxPrice] = useState<number>(50);
+
+  /** Cheapest available format price for a book (used for price sort + filter). */
+  const cheapestPrice = useCallback((b: Book): number => {
+    const prices = [b.pricing.ebook, b.pricing.paperback, b.pricing.hardcover].filter(
+      (p): p is number => p != null
+    );
+    return prices.length ? Math.min(...prices) : 0;
+  }, []);
 
   // Selected book for the detail modal.
   const [selectedBook, setSelectedBook] = useState<Book | null>(null);
@@ -53,9 +68,24 @@ export function Bookshelf() {
     [trackViewed]
   );
 
-  // Books filtered by the active genre. Duplicated so the marquee loops seamlessly.
-  const filtered =
-    activeGenre === "All" ? books : books.filter((b) => b.genre === activeGenre);
+  // Books filtered by genre + search + price, then sorted.
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    let list = books.filter((b) => {
+      if (activeGenre !== "All" && b.genre !== activeGenre) return false;
+      if (cheapestPrice(b) > maxPrice) return false;
+      if (q) {
+        const haystack = `${b.title} ${b.subtitle || ""} ${b.description} ${b.genre}`.toLowerCase();
+        if (!haystack.includes(q)) return false;
+      }
+      return true;
+    });
+    if (sort === "price-asc") list = [...list].sort((a, b) => cheapestPrice(a) - cheapestPrice(b));
+    else if (sort === "price-desc") list = [...list].sort((a, b) => cheapestPrice(b) - cheapestPrice(a));
+    else if (sort === "title-asc") list = [...list].sort((a, b) => a.title.localeCompare(b.title));
+    else if (sort === "year-desc") list = [...list].sort((a, b) => Number(b.year) - Number(a.year));
+    return list;
+  }, [activeGenre, search, sort, maxPrice, cheapestPrice]);
   const loop: Book[] = [...filtered, ...filtered];
 
   // Measure track + one book width for seamless wrap + step size.
@@ -238,13 +268,83 @@ export function Bookshelf() {
           apocalyptic prophecy. Hover or drag to explore.
         </p>
 
+        {/* Search + sort + price filter bar */}
+        <RevealOnScroll className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 mb-6 max-w-3xl mx-auto">
+          {/* Search */}
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gold/60 pointer-events-none" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search by title, description, or genre…"
+              className="w-full bg-deep/80 border border-gold-soft rounded-sm pl-10 pr-9 py-2.5 font-body text-cream placeholder:text-muted-warm/60 focus:border-gold focus:ring-1 focus:ring-gold/40 text-sm transition-colors"
+              aria-label="Search books"
+            />
+            {search && (
+              <button
+                onClick={() => setSearch("")}
+                aria-label="Clear search"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-warm hover:text-gold-bright transition-colors"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+          {/* Sort */}
+          <div className="relative">
+            <ArrowDownWideNarrow className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gold/60 pointer-events-none" />
+            <select
+              value={sort}
+              onChange={(e) => setSort(e.target.value as typeof sort)}
+              className="appearance-none bg-deep/80 border border-gold-soft rounded-sm pl-9 pr-8 py-2.5 font-ui text-[0.66rem] uppercase tracking-widest-2 text-cream focus:border-gold focus:ring-1 focus:ring-gold/40 cursor-pointer"
+              aria-label="Sort books"
+            >
+              <option value="default">Sort: Default</option>
+              <option value="price-asc">Price: Low → High</option>
+              <option value="price-desc">Price: High → Low</option>
+              <option value="title-asc">Title: A → Z</option>
+              <option value="year-desc">Newest first</option>
+            </select>
+          </div>
+        </RevealOnScroll>
+
+        {/* Price range slider */}
+        <RevealOnScroll className="flex items-center justify-center gap-3 mb-8 max-w-2xl mx-auto">
+          <span className="font-ui text-[0.56rem] uppercase tracking-widest-2 text-muted-warm whitespace-nowrap">
+            Max price
+          </span>
+          <input
+            type="range"
+            min={4}
+            max={50}
+            step={1}
+            value={maxPrice}
+            onChange={(e) => setMaxPrice(Number(e.target.value))}
+            className="flex-1 max-w-xs accent-[#D9B26B]"
+            aria-label="Maximum price filter"
+          />
+          <span className="font-heading text-gold-bright text-sm tabular-nums min-w-[3.5rem] text-right">
+            ${maxPrice.toFixed(2)}
+          </span>
+          {maxPrice < 50 && (
+            <button
+              onClick={() => setMaxPrice(50)}
+              className="font-ui text-[0.54rem] uppercase tracking-widest-2 text-muted-warm hover:text-gold-bright transition-colors"
+              aria-label="Reset price filter"
+            >
+              Reset
+            </button>
+          )}
+        </RevealOnScroll>
+
         {/* Genre filter chips */}
         <RevealOnScroll className="flex flex-wrap items-center justify-center gap-2 mb-10">
           {(["All", ...GENRES] as const).map((g) => (
             <button
               key={g}
               onClick={() => setActiveGenre(g)}
-              className={`genre-chip ${activeGenre === g ? "active" : ""}`}
+              className={cn("genre-chip", activeGenre === g && "active")}
               aria-pressed={activeGenre === g}
             >
               {g}
@@ -295,6 +395,31 @@ export function Bookshelf() {
         />
 
         {/* Track */}
+        {filtered.length === 0 ? (
+          <div className="py-16 text-center">
+            <div className="h-14 w-14 mx-auto rounded-full border border-gold-soft flex items-center justify-center mb-4">
+              <Search className="h-6 w-6 text-gold/50" />
+            </div>
+            <h3 className="font-heading text-cream text-lg uppercase tracking-wide">
+              No books match your filters
+            </h3>
+            <p className="font-body text-muted-warm text-sm mt-2 max-w-sm mx-auto">
+              Try a different search term, a wider price range, or a different genre.
+            </p>
+            <button
+              onClick={() => {
+                setSearch("");
+                setActiveGenre("All");
+                setMaxPrice(50);
+                setSort("default");
+              }}
+              className="btn-outline-gold mt-5 inline-flex items-center gap-2 text-[0.66rem] py-2.5 px-4"
+            >
+              <X className="h-3.5 w-3.5" />
+              Clear all filters
+            </button>
+          </div>
+        ) : (
         <div
           className="marquee-wrap overflow-hidden cursor-grab active:cursor-grabbing"
           onMouseEnter={onEnter}
@@ -320,6 +445,7 @@ export function Bookshelf() {
             ))}
           </div>
         </div>
+        )}
 
         {/* Detail modal */}
         <BookDetailModal

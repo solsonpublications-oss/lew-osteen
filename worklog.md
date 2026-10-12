@@ -291,3 +291,73 @@ Stage Summary:
 - **10 new CSS animations** added for micro-interactions.
 - The original site (Hero, About, Coming Soon, Bookshelf, Footer) remains 100% intact — every change is additive.
 - Ready for the next round: live Stripe Payment Element + PayPal SDK buttons (when keys land), server-side reviews persistence (migrate localStorage reviews to Prisma), book bundles/series discounts, gift card system, author analytics charts.
+
+---
+Task ID: 12 (web dev review cron — round 3)
+Agent: main (Z.ai Code)
+Task: QA pass + 3 new features (Author Blog with comments, Book Bundles with auto-generated coupons, Bookshelf search/filter/sort) + 10 new CSS animations + styling polish.
+
+Work Log:
+
+### QA pass
+- Lint check passed clean. Dev server running. Homepage + admin page both load without errors. Cart + checkout flow verified working.
+
+### New feature: Author Blog / Field Notes
+- Created `src/data/blog.ts` with 6 sample posts across 5 categories (Writing, Research, News, Behind the Scenes, Reader Mail):
+  - "The Long Road to Nod" (Writing, 4 min) — on the decade-spanning genesis of The Pyramids of Nod
+  - "Researching the Joshua Trail" (Research, 5 min) — three summers in the California gold country
+  - "The Apocalypse Question" (Writing, 3 min) — why apocalyptic fiction is hopeful at its best
+  - "Signed First Editions Are Back" (News, 1 min) — limited run announcement
+  - "A Letter from a Reader in Utah" (Reader Mail, 2 min) — a moving reader letter about A Yellow Cotton Dress
+  - "Behind the Cure" (Behind the Scenes, 4 min) — the real medical case that inspired The Cure
+  Each post has a slug, title, excerpt, multi-paragraph body, ISO date, category, read time, and tags.
+- Created `src/lib/blog-comments-store.ts` (Zustand + persist to localStorage) — readers can comment on any post (no auth, local to browser). Comments have author + body + timestamp.
+- Built `src/components/site/BlogPostModal.tsx` — full-post reader Dialog. Header shows category badge + date + read time. Body renders with a decorative drop cap on the first paragraph. Tags shown at the bottom. Signature "— Lew". Embedded CommentsSection with "Add comment" form (name + body, 600 char limit) + scrollable list of comments with delete buttons.
+- Built `src/components/site/BlogSection.tsx` — "Field Notes" section below the AuthorTimeline. Category filter chips (All, Writing, Research, News, Behind the Scenes, Reader Mail) + post count. Responsive grid of BlogCard components (3 columns on desktop, 2 on tablet, 1 on mobile). Each card shows category badge, date, title, excerpt, read time, and a "Read →" CTA. Clicking opens the BlogPostModal.
+- Wired into `src/app/page.tsx` after AuthorTimeline.
+
+### New feature: Book Bundles with auto-generated coupons
+- Created `src/data/bundles.ts` with 3 curated bundles:
+  - **The Joshua Trail Trilogy** (3 ebooks, $21.57, Save 20%) — Six Notch Road + The Joshua Trail + A Season of Reckoning
+  - **The Apocalypse Cometh Pair** (2 ebooks, $15.28, Save 15%) — The Apocalypse Cometh + Wake Up World!
+  - **Children's Delight Pair** (2 ebooks, $8.48, Save 15%) — Wigglewagglewattamus + The Little Rabbit
+  Each bundle has a slug, title, subtitle, description, items (with cover + retail price), bundle price, accent color, and a "Save X%" badge. Helper functions: `bundleRetailTotal`, `bundleSavings`, `bundleSavingsPercent`.
+- Extended `src/lib/ecommerce/coupons.ts` to auto-generate a percent-off coupon for each bundle. The coupon code is the bundle slug uppercased with hyphens removed (e.g. `JOSHUATRAILTRILOGYEBOOK`), with a `minSubtotalUSD` equal to the bundle's retail total (so the coupon only applies when the buyer has all the bundle's books in their cart).
+- Built `src/components/site/BundlesSection.tsx` — "Reader Bundles" section below the RecentlyViewed shelf. Responsive grid of BundleCard components. Each card has an accent stripe, a shine-animated "Save X%" badge, package icon, title, subtitle, description, item list (with covers + retail prices + check marks), price breakdown (bundle price vs retail total strikethrough + savings amount + percentage), "Add bundle to cart" button (accent-colored), and a "Use code XXXXX at checkout" hint.
+- Clicking "Add bundle to cart" adds all the bundle's items at their retail price, then shows a toast: "{bundle title} added to cart — Apply code {CODE} at checkout to save {X}%."
+- Wired into `src/app/page.tsx` between RecentlyViewed and FeaturedSeries.
+- Verified end-to-end: added Joshua Trail Trilogy bundle → cart has 3 items → checkout → applied code `JOSHUATRAILTRILOGYEBOOK` → "Coupon applied — The Joshua Trail Trilogy bundle — 20% off" → subtotal $26.97 → discount −$5.39 → total $21.58.
+
+### New feature: Bookshelf search + sort + price filter
+- Extended `src/components/site/Bookshelf.tsx` with 3 new filter controls:
+  - **Search input** — full-text search across title, subtitle, description, and genre. Gold search icon + clear (X) button when text is present.
+  - **Sort dropdown** — 5 options: Default, Price Low→High, Price High→Low, Title A→Z, Newest first. Custom gold dropdown arrow via CSS background-image.
+  - **Price range slider** — gold-thumb range input from $4 to $50, filters by the cheapest available format per book. Shows the current max value + a "Reset" button when below $50.
+- Refactored the `filtered` logic into a `useMemo` that applies genre + search + price filters, then sorts. Added a `cheapestPrice(book)` helper that returns the minimum of the book's available format prices.
+- Added an empty state when no books match: "No books match your filters" with a "Clear all filters" button that resets search + genre + price + sort.
+- The marquee track + nav buttons + shelf ledge only render when `filtered.length > 0`; the empty state replaces them.
+- Verified: searched "western" → 3 western books shown. Set price to $4 → 0 books + empty state. Clicked "Clear all filters" → all 15 books restored. Sort by price ascending reorders the shelf.
+
+### Styling polish (10 new CSS animations + utilities)
+- `blog-card-hover` — blog post cards lift on hover with a soft gold-tinted shadow.
+- `count-up` — stat counter fade-up reveal.
+- `input[type="range"]` — custom gold thumb styling for the price slider (with hover scale).
+- `select` — custom gold dropdown arrow + dark-themed option list.
+- `bundle-card-glow` — bundle cards brighten on hover.
+- `hero-parallax-layer` — will-change transform for smooth parallax.
+- `animated-underline` — animated gold gradient underline that sweeps continuously.
+- `badge-shine` — a shimmer sweep across bundle badges.
+- Applied `blog-card-hover` to BlogCard + `badge-shine` to the bundle Save badge.
+
+### End-to-end verification (agent-browser)
+- Bundles section: 3 cards render with covers, prices, Save 20%/15% badges, "Add bundle to cart" buttons. Clicking adds 3 items to cart. Applying the bundle coupon at checkout shows the 20% discount ($5.39 off $26.97).
+- Blog section: "FIELD NOTES" heading + 6 post cards + category filter chips (All active, Writing, Research, News, Behind the Scenes, Reader Mail) + "6 POSTS" counter. Clicking a post opens the reader modal with category badge + date + read time + body + tags + comments section ("COMMENTS (0)" + "ADD COMMENT" button).
+- Bookshelf search: typing "western" filters to 3 western books. Price slider at $4 shows the empty state ("NO BOOKS MATCH YOUR FILTERS" + "CLEAR ALL FILTERS"). Clearing restores all 15 books.
+- `bun run lint` passes with 0 errors and 0 warnings.
+
+Stage Summary:
+- **3 new features shipped**: Author Blog (6 posts + 5 categories + reader comments), Book Bundles (3 curated bundles with auto-generated coupons), Bookshelf search/sort/price-filter.
+- **10 new CSS animations** + utilities added (blog card hover, count-up, gold range slider, custom select, bundle glow, parallax layer, animated underline, badge shine).
+- The bundle→coupon integration is the standout: the BundlesSection surfaces a coupon code on each card, and the server-side coupon validator auto-generates matching coupons from the bundle definitions — so adding a new bundle to `bundles.ts` automatically creates its coupon with no extra code.
+- The original site (Hero, About, Coming Soon, Bookshelf, Footer) remains 100% intact — every change is additive.
+- Ready for the next round: gift card / store credit system, server-side reviews + comments persistence (migrate localStorage to Prisma), author analytics charts in admin, live Stripe Payment Element when keys land.

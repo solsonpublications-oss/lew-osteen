@@ -20,6 +20,8 @@ import { CheckoutDialog } from "@/components/site/CheckoutDialog";
 import { OrderHistoryDialog } from "@/components/site/OrderHistoryDialog";
 import { WishlistDialog } from "@/components/site/WishlistDialog";
 import { RecentlyViewed } from "@/components/site/RecentlyViewed";
+import { BlogSection } from "@/components/site/BlogSection";
+import { BundlesSection } from "@/components/site/BundlesSection";
 
 export default function Home() {
   return (
@@ -39,11 +41,13 @@ export default function Home() {
         <Bookshelf />
         {/* Recently viewed appears here once the visitor has opened ≥1 book */}
         <RecentlyViewed />
+        <BundlesSection />
         <FeaturedSeries />
         <WhereToStart />
         <SectionDivider variant="pyramid" />
         <EarlyPraise />
         <AuthorTimeline />
+        <BlogSection />
       </main>
       <Footer />
       <BackToTop />

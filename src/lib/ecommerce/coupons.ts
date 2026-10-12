@@ -1,5 +1,7 @@
 import "server-only";
 
+import { bundles, bundleSavingsPercent } from "@/data/bundles";
+
 // ============================================================
 // Coupon codes — in-memory definitions.
 // In production these would live in the DB / a CMS, but for
@@ -63,6 +65,21 @@ export const COUPONS: Coupon[] = [
     maxRedemptions: null,
     hidden: true, // shared privately with the author's newsletter
   },
+  // --- Auto-generated bundle coupons (one per bundle) ---
+  // Each bundle discount is a percent-off coupon whose code is the bundle
+  // slug uppercased. The BundlesSection surfaces the code on the bundle card.
+  ...bundles
+    .filter((b) => b.items.length > 0)
+    .map((b) => ({
+      code: b.slug.toUpperCase().replace(/-/g, ""),
+      kind: "percent" as CouponKind,
+      value: bundleSavingsPercent(b),
+      description: `${b.title} bundle — ${bundleSavingsPercent(b)}% off`,
+      minSubtotalUSD: b.items.reduce((s, it) => s + it.retailPrice, 0),
+      expiresAt: "2027-12-31T23:59:59Z",
+      maxRedemptions: null as number | null,
+      hidden: true, // not advertised outside the bundle card
+    })),
 ];
 
 // Simple in-memory redemption counter (per-process). Good enough for a
