@@ -1,0 +1,983 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Separator } from "@/components/ui/separator";
+import {
+  CheckCircle2,
+  Loader2,
+  ArrowLeft,
+  ArrowRight,
+  CreditCard,
+  Mail,
+  Truck,
+  Shield,
+  Sparkles,
+  BookOpen,
+  Package,
+  Download,
+  Copy,
+  Check,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
+import { useCart, formatUSD, type CartItem } from "@/lib/cart-store";
+import { useUI } from "@/lib/ui-store";
+import {
+  FORMAT_LABEL,
+  requiresShipping,
+  type BookFormat,
+} from "@/data/books";
+import { toast } from "sonner";
+
+// ============================================================
+// Checkout Dialog — multi-step: contact/shipping → payment → confirmation
+// Listens to useUI.checkoutOpen. Handles both Cart-checkout and Buy-Now.
+// Calls:
+//   POST /api/checkout/stripe/create-intent  → { clientSecret, demo, publishableKey }
+//   POST /api/checkout/paypal/create-order   → { orderID, demo }
+//   POST /api/checkout/paypal/capture        → { captured, ref, demo }
+//   POST /api/orders                         → { ok, order: { publicId, status, ... } }
+//   GET  /api/orders/[publicId]              → order status (polling)
+// In demo mode (no Stripe/PayPal keys), each create endpoint returns demo:true and
+// the dialog shows a "Simulate payment" button instead of mounting real SDK widgets.
+// ============================================================
+
+type Step = "info" | "payment" | "processing" | "confirmation" | "failed";
+type PaymentMethod = "stripe" | "paypal" | null;
+
+type OrderConfirmation = {
+  publicId: string;
+  status: string;
+  totalCents: number;
+  hasPrint: boolean;
+  hasDigital: boolean;
+  luluStatus?: string;
+  items: Array<{ bookTitle: string; format: string; quantity: number; coverPath?: string }>;
+};
+
+type ShippingAddress = {
+  line1: string;
+  line2: string;
+  city: string;
+  state: string;
+  postalCode: string;
+  country: string;
+};
+
+export function CheckoutDialog() {
+  const open = useUI((s) => s.checkoutOpen);
+  const close = useUI((s) => s.closeCheckout);
+  const buyNowItem = useUI((s) => s.buyNowItem);
+  const clearBuyNow = useUI((s) => s.clearBuyNow);
+  const clearCart = useCart((s) => s.clear);
+  const cartItems = useCart((s) => s.items);
+
+  // Effective items to checkout: buyNow overrides cart.
+  const items: CartItem[] = useMemo(() => {
+    if (buyNowItem) {
+      return [
+        {
+          bookSlug: buyNowItem.bookSlug,
+          bookTitle: buyNowItem.bookTitle,
+          cover: buyNowItem.cover,
+          format: buyNowItem.format,
+          unitPrice: buyNowItem.unitPrice,
+          qty: 1,
+        },
+      ];
+    }
+    return cartItems;
+  }, [buyNowItem, cartItems]);
+
+  const subtotal = items.reduce((s, i) => s + i.qty * i.unitPrice, 0);
+  const hasPrint = items.some(
+    (i) => i.format === "paperback" || i.format === "hardcover"
+  );
+  const hasDigital = items.some((i) => i.format === "ebook");
+
+  // Steps
+  const [step, setStep] = useState<Step>("info");
+  const [method, setMethod] = useState<PaymentMethod>(null);
+
+  // Form state
+  const [email, setEmail] = useState("");
+  const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [ship, setShip] = useState<ShippingAddress>({
+    line1: "", line2: "", city: "", state: "", postalCode: "", country: "United States",
+  });
+  const [notes, setNotes] = useState("");
+
+  // Payment state
+  const [stripeIntent, setStripeIntent] = useState<null | {
+    clientSecret: string;
+    paymentIntentId: string;
+    demo: boolean;
+    publishableKey: string | null;
+    amountCents: number;
+  }>(null);
+  const [paypalOrder, setPaypalOrder] = useState<null | {
+    orderID: string;
+    demo: boolean;
+    amountCents: number;
+  }>(null);
+  const [creatingIntent, setCreatingIntent] = useState(false);
+
+  // Confirmation
+  const [confirmation, setConfirmation] = useState<OrderConfirmation | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  // Reset everything when the dialog closes.
+  useEffect(() => {
+    if (!open) {
+      const t = setTimeout(() => {
+        setStep("info");
+        setMethod(null);
+        setStripeIntent(null);
+        setPaypalOrder(null);
+        setConfirmation(null);
+        setError(null);
+        setNotes("");
+      }, 250);
+      return () => clearTimeout(t);
+    }
+    // when opening, jump to info
+    if (open) {
+      setStep("info");
+      setError(null);
+    }
+  }, [open]);
+
+  const totalCents = Math.round(subtotal * 100);
+  const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  const infoValid =
+    emailValid &&
+    (!hasPrint ||
+      (ship.line1.trim() && ship.city.trim() && ship.state.trim() &&
+        ship.postalCode.trim() && ship.country.trim()));
+
+  // ---------- Step transitions ----------
+  const goToPayment = async () => {
+    if (!infoValid) {
+      setError("Please complete all required fields.");
+      return;
+    }
+    setError(null);
+    setStep("payment");
+  };
+
+  // Create Stripe intent on demand (when the user picks Stripe)
+  const chooseStripe = async () => {
+    setMethod("stripe");
+    setCreatingIntent(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/checkout/stripe/create-intent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          items: items.map((i) => ({
+            bookSlug: i.bookSlug,
+            format: i.format,
+            qty: i.qty,
+          })),
+          buyerEmail: email,
+        }),
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || "Failed to start Stripe payment");
+      setStripeIntent({
+        clientSecret: data.clientSecret,
+        paymentIntentId: data.paymentIntentId,
+        demo: !!data.demo,
+        publishableKey: data.publishableKey,
+        amountCents: data.amountCents,
+      });
+    } catch (e: any) {
+      setError(e?.message || "Could not reach Stripe. Try again.");
+      setMethod(null);
+    } finally {
+      setCreatingIntent(false);
+    }
+  };
+
+  // Create PayPal order on demand (when the user picks PayPal)
+  const choosePaypal = async () => {
+    setMethod("paypal");
+    setCreatingIntent(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/checkout/paypal/create-order", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          items: items.map((i) => ({
+            bookSlug: i.bookSlug,
+            format: i.format,
+            qty: i.qty,
+          })),
+          buyerEmail: email,
+        }),
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || "Failed to start PayPal payment");
+      setPaypalOrder({
+        orderID: data.orderID,
+        demo: !!data.demo,
+        amountCents: data.amountCents,
+      });
+    } catch (e: any) {
+      setError(e?.message || "Could not reach PayPal. Try again.");
+      setMethod(null);
+    } finally {
+      setCreatingIntent(false);
+    }
+  };
+
+  // ---------- Payment confirmation handlers ----------
+  // Stripe (demo): just submit the order with the demo paymentIntentId.
+  // Stripe (live): here we would mount Stripe Payment Element + confirm card payment.
+  //   For this build we ship the demo path + a lightweight live confirmation that
+  //   posts the intent id; full live card form integration requires a hosted
+  //   Stripe Payment Element which is added when real keys are configured.
+  const onStripePayDemo = () => submitOrder("stripe", stripeIntent?.paymentIntentId || "demo");
+
+  // PayPal (demo): simulate approval + capture, then submit order.
+  const onPaypalPayDemo = async () => {
+    setStep("processing");
+    setError(null);
+    try {
+      // Simulate capture
+      const cap = await fetch("/api/checkout/paypal/capture", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderID: paypalOrder?.orderID }),
+      });
+      const capData = await cap.json();
+      if (!capData.ok) throw new Error(capData.error || "PayPal capture failed");
+      await submitOrder("paypal", paypalOrder?.orderID || "demo");
+    } catch (e: any) {
+      setError(e?.message || "PayPal payment failed");
+      setStep("payment");
+    }
+  };
+
+  // Submit the final order with paymentRef.
+  const submitOrder = async (
+    payMethod: "stripe" | "paypal" | "demo",
+    paymentRef: string
+  ) => {
+    setStep("processing");
+    setError(null);
+    try {
+      const body: any = {
+        buyerEmail: email.trim().toLowerCase(),
+        buyerName: name.trim() || undefined,
+        buyerPhone: phone.trim() || undefined,
+        paymentMethod: payMethod,
+        paymentRef,
+        items: items.map((i) => ({
+          bookSlug: i.bookSlug,
+          format: i.format,
+          qty: i.qty,
+        })),
+        notes: notes.trim() || undefined,
+        buyNow: !!buyNowItem,
+      };
+      if (hasPrint) body.shippingAddress = ship;
+
+      const res = await fetch("/api/orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || "Order failed");
+      setConfirmation(data.order);
+      setStep("confirmation");
+      // Clear cart + buy-now on success
+      if (!buyNowItem) clearCart();
+      clearBuyNow();
+      toast.success("Order placed!", {
+        description: `Your order ${data.order.publicId} has been confirmed.`,
+      });
+    } catch (e: any) {
+      setError(e?.message || "Could not place order");
+      setStep("failed");
+    }
+  };
+
+  const itemCount = items.reduce((n, i) => n + i.qty, 0);
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && close()}>
+      <DialogContent
+        className="max-w-2xl bg-[#15120F] border-gold/40 text-cream p-0 overflow-hidden max-h-[94vh] overflow-y-auto"
+        aria-describedby={undefined}
+      >
+        <DialogTitle className="sr-only">Checkout</DialogTitle>
+        <DialogDescription className="sr-only">
+          Complete your purchase from Lew Osteen.
+        </DialogDescription>
+
+        {/* Header band */}
+        <div className="px-6 sm:px-8 pt-6 pb-4 border-b border-gold-soft/40 bg-deep/40">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <BookOpen className="h-5 w-5 text-gold" />
+              <span className="font-heading text-gold-bright uppercase tracking-widest-2 text-base">
+                Checkout
+              </span>
+            </div>
+            {buyNowItem && (
+              <span className="font-ui text-[0.58rem] uppercase tracking-widest-2 text-gold/70 px-2 py-1 rounded-full border border-gold-soft">
+                Buy now
+              </span>
+            )}
+          </div>
+          {/* Stepper */}
+          <div className="flex items-center gap-2 mt-4">
+            {(["info", "payment", "processing", "confirmation"] as Step[]).map((s, i) => {
+              const active =
+                step === s ||
+                (s === "payment" && step === "failed") ||
+                (s === "processing" && step === "processing");
+              const done =
+                (s === "info" && (step === "payment" || step === "processing" || step === "confirmation")) ||
+                (s === "payment" && (step === "processing" || step === "confirmation")) ||
+                (s === "processing" && step === "confirmation");
+              return (
+                <div key={s} className="flex items-center gap-2 flex-1">
+                  <span
+                    className={cn(
+                      "h-6 w-6 rounded-full flex items-center justify-center font-ui text-[0.62rem] font-bold transition-all",
+                      active
+                        ? "bg-gold text-[#1A1407] shadow-[0_0_14px_-2px_rgba(217,178,107,0.6)]"
+                        : done
+                        ? "bg-gold/30 text-gold-bright border border-gold/40"
+                        : "border border-gold-soft text-muted-warm"
+                    )}
+                  >
+                    {done ? <Check className="h-3 w-3" /> : i + 1}
+                  </span>
+                  <span
+                    className={cn(
+                      "font-ui text-[0.58rem] uppercase tracking-widest-2",
+                      active || done ? "text-gold-bright" : "text-muted-warm"
+                    )}
+                  >
+                    {s === "info" ? "Info" : s === "payment" ? "Pay" : s === "processing" ? "Process" : "Done"}
+                  </span>
+                  {i < 3 && (
+                    <span className={cn("flex-1 h-px", done ? "bg-gold/40" : "bg-gold-soft/30")} />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Body */}
+        <div className="px-6 sm:px-8 py-6">
+          {step === "info" && (
+            <InfoStep
+              email={email} setEmail={setEmail}
+              name={name} setName={setName}
+              phone={phone} setPhone={setPhone}
+              hasPrint={hasPrint}
+              ship={ship} setShip={setShip}
+              notes={notes} setNotes={setNotes}
+              error={error}
+              items={items}
+              subtotal={subtotal}
+              itemCount={itemCount}
+              onNext={goToPayment}
+            />
+          )}
+
+          {step === "payment" && (
+            <PaymentStep
+              method={method}
+              onChooseStripe={chooseStripe}
+              onChoosePaypal={choosePaypal}
+              creatingIntent={creatingIntent}
+              stripeIntent={stripeIntent}
+              paypalOrder={paypalOrder}
+              onStripePayDemo={onStripePayDemo}
+              onPaypalPayDemo={onPaypalPayDemo}
+              onBack={() => setStep("info")}
+              onPay={async (m) => {
+                if (m === "stripe") await chooseStripe();
+                else await choosePaypal();
+              }}
+              error={error}
+              items={items}
+              subtotal={subtotal}
+              email={email}
+            />
+          )}
+
+          {step === "processing" && (
+            <div className="py-16 text-center">
+              <Loader2 className="h-10 w-10 text-gold animate-spin mx-auto" />
+              <h3 className="font-heading text-cream text-lg uppercase tracking-wide mt-4">
+                Processing your order…
+              </h3>
+              <p className="font-body text-muted-warm text-sm mt-2">
+                Securely finalising payment and dispatching your books.
+              </p>
+            </div>
+          )}
+
+          {step === "confirmation" && confirmation && (
+            <ConfirmationStep order={confirmation} email={email} onClose={close} />
+          )}
+
+          {step === "failed" && (
+            <div className="py-12 text-center">
+              <div className="h-14 w-14 mx-auto rounded-full border border-ember/50 flex items-center justify-center text-ember">
+                <Shield className="h-6 w-6" />
+              </div>
+              <h3 className="font-heading text-cream text-lg uppercase tracking-wide mt-4">
+                Order could not be placed
+              </h3>
+              <p className="font-body text-muted-warm text-sm mt-2 max-w-sm mx-auto">
+                {error || "Something went wrong. Your card was not charged."}
+              </p>
+              <div className="flex justify-center gap-3 mt-6">
+                <Button
+                  variant="outline"
+                  className="btn-outline-gold border border-gold/60 text-gold hover:text-gold-bright"
+                  onClick={() => setStep("info")}
+                >
+                  <ArrowLeft className="h-4 w-4 mr-1" />
+                  Back to info
+                </Button>
+                <Button
+                  className="btn-gold text-cream"
+                  onClick={() => setStep("payment")}
+                >
+                  Try payment again
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ============================================================
+// STEP 1 — Contact + (optional) shipping info
+// ============================================================
+function InfoStep(props: {
+  email: string; setEmail: (v: string) => void;
+  name: string; setName: (v: string) => void;
+  phone: string; setPhone: (v: string) => void;
+  hasPrint: boolean;
+  ship: ShippingAddress; setShip: (s: ShippingAddress) => void;
+  notes: string; setNotes: (v: string) => void;
+  error: string | null;
+  items: CartItem[]; subtotal: number; itemCount: number;
+  onNext: () => void;
+}) {
+  const {
+    email, setEmail, name, setName, phone, setPhone,
+    hasPrint, ship, setShip, notes, setNotes, error,
+    items, subtotal, itemCount, onNext,
+  } = props;
+
+  return (
+    <div className="space-y-6">
+      {/* Order summary (compact) */}
+      <OrderSummary items={items} subtotal={subtotal} itemCount={itemCount} />
+
+      {/* Contact */}
+      <section>
+        <SectionLabel icon={Mail}>Contact details</SectionLabel>
+        <div className="grid sm:grid-cols-2 gap-3 mt-3">
+          <Field label="Email *" required>
+            <Input
+              type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@email.com"
+              className="bg-deep/80 border-gold-soft text-cream placeholder:text-muted-warm/60 focus:border-gold focus:ring-gold/40"
+            />
+          </Field>
+          <Field label="Name (optional)">
+            <Input
+              value={name} onChange={(e) => setName(e.target.value)}
+              placeholder="Jane Reader"
+              className="bg-deep/80 border-gold-soft text-cream placeholder:text-muted-warm/60 focus:border-gold focus:ring-gold/40"
+            />
+          </Field>
+        </div>
+        <div className="mt-3">
+          <Field label="Phone (optional)">
+            <Input
+              value={phone} onChange={(e) => setPhone(e.target.value)}
+              placeholder="+1 555 000 0000"
+              className="bg-deep/80 border-gold-soft text-cream placeholder:text-muted-warm/60 focus:border-gold focus:ring-gold/40 max-w-xs"
+            />
+          </Field>
+        </div>
+        <p className="font-body text-[0.72rem] text-muted-warm mt-2 italic">
+          Your eBook delivery link and order confirmation will be sent to this email.
+        </p>
+      </section>
+
+      {/* Shipping (only if print items) */}
+      {hasPrint && (
+        <section>
+          <SectionLabel icon={Truck}>Shipping address</SectionLabel>
+          <div className="grid sm:grid-cols-2 gap-3 mt-3">
+            <Field label="Address line 1 *" required>
+              <Input value={ship.line1} onChange={(e) => setShip({ ...ship, line1: e.target.value })} placeholder="123 Main St" className="bg-deep/80 border-gold-soft text-cream placeholder:text-muted-warm/60 focus:border-gold focus:ring-gold/40" />
+            </Field>
+            <Field label="Address line 2">
+              <Input value={ship.line2} onChange={(e) => setShip({ ...ship, line2: e.target.value })} placeholder="Apt, suite (optional)" className="bg-deep/80 border-gold-soft text-cream placeholder:text-muted-warm/60 focus:border-gold focus:ring-gold/40" />
+            </Field>
+            <Field label="City *" required>
+              <Input value={ship.city} onChange={(e) => setShip({ ...ship, city: e.target.value })} placeholder="Austin" className="bg-deep/80 border-gold-soft text-cream placeholder:text-muted-warm/60 focus:border-gold focus:ring-gold/40" />
+            </Field>
+            <Field label="State / Province *" required>
+              <Input value={ship.state} onChange={(e) => setShip({ ...ship, state: e.target.value })} placeholder="TX" className="bg-deep/80 border-gold-soft text-cream placeholder:text-muted-warm/60 focus:border-gold focus:ring-gold/40" />
+            </Field>
+            <Field label="Postal code *" required>
+              <Input value={ship.postalCode} onChange={(e) => setShip({ ...ship, postalCode: e.target.value })} placeholder="78701" className="bg-deep/80 border-gold-soft text-cream placeholder:text-muted-warm/60 focus:border-gold focus:ring-gold/40" />
+            </Field>
+            <Field label="Country *" required>
+              <Input value={ship.country} onChange={(e) => setShip({ ...ship, country: e.target.value })} placeholder="United States" className="bg-deep/80 border-gold-soft text-cream placeholder:text-muted-warm/60 focus:border-gold focus:ring-gold/40" />
+            </Field>
+          </div>
+          <p className="font-body text-[0.72rem] text-muted-warm mt-2 italic">
+            Print editions are produced and shipped by Lulu print-on-demand. You
+            will receive a shipping confirmation from Lulu once your books are
+            dispatched.
+          </p>
+        </section>
+      )}
+
+      {/* Notes */}
+      <section>
+        <Field label="Order notes (optional)">
+          <Input
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            placeholder="Signed copy request, gift note, etc."
+            className="bg-deep/80 border-gold-soft text-cream placeholder:text-muted-warm/60 focus:border-gold focus:ring-gold/40"
+          />
+        </Field>
+      </section>
+
+      {error && (
+        <p className="text-[0.78rem] text-ember font-ui">{error}</p>
+      )}
+
+      {/* Continue */}
+      <div className="flex justify-end">
+        <Button className="btn-gold text-cream inline-flex items-center gap-2" onClick={onNext}>
+          Continue to payment
+          <ArrowRight className="h-4 w-4" />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// STEP 2 — Payment method picker + processor
+// ============================================================
+function PaymentStep(props: {
+  method: PaymentMethod;
+  onChooseStripe: () => void;
+  onChoosePaypal: () => void;
+  creatingIntent: boolean;
+  stripeIntent: any | null;
+  paypalOrder: any | null;
+  onStripePayDemo: () => void;
+  onPaypalPayDemo: () => void;
+  onBack: () => void;
+  onPay: (m: "stripe" | "paypal") => void;
+  error: string | null;
+  items: CartItem[]; subtotal: number; email: string;
+}) {
+  const {
+    method, onChooseStripe, onChoosePaypal, creatingIntent,
+    stripeIntent, paypalOrder, onStripePayDemo, onPaypalPayDemo, onBack, error,
+    items, subtotal,
+  } = props;
+
+  return (
+    <div className="space-y-6">
+      <OrderSummary items={items} subtotal={subtotal} itemCount={items.reduce((n, i) => n + i.qty, 0)} />
+
+      <section>
+        <SectionLabel icon={CreditCard}>Choose payment method</SectionLabel>
+        <div className="grid sm:grid-cols-2 gap-3 mt-3">
+          {/* Stripe option */}
+          <button
+            onClick={onChooseStripe}
+            className={cn(
+              "flex items-center gap-3 px-4 py-4 rounded-sm border text-left transition-all",
+              method === "stripe"
+                ? "border-gold bg-gold/10 shadow-[0_0_18px_-6px_rgba(217,178,107,0.45)]"
+                : "border-gold-soft hover:border-gold/60 hover:bg-gold/5"
+            )}
+          >
+            <div className="h-9 w-9 rounded-full bg-[#635BFF] flex items-center justify-center text-white font-bold text-xs">
+              S
+            </div>
+            <div className="flex-1">
+              <div className="font-ui text-[0.74rem] uppercase tracking-widest-2 text-cream">
+                Credit / Debit Card
+              </div>
+              <div className="font-body text-[0.66rem] text-muted-warm">
+                Visa · Mastercard · Amex · via Stripe
+              </div>
+            </div>
+            {method === "stripe" && <Check className="h-4 w-4 text-gold-bright" />}
+          </button>
+
+          {/* PayPal option */}
+          <button
+            onClick={onChoosePaypal}
+            className={cn(
+              "flex items-center gap-3 px-4 py-4 rounded-sm border text-left transition-all",
+              method === "paypal"
+                ? "border-gold bg-gold/10 shadow-[0_0_18px_-6px_rgba(217,178,107,0.45)]"
+                : "border-gold-soft hover:border-gold/60 hover:bg-gold/5"
+            )}
+          >
+            <div className="h-9 w-9 rounded-full bg-[#003087] flex items-center justify-center text-white font-bold text-[0.62rem] tracking-wider">
+              PP
+            </div>
+            <div className="flex-1">
+              <div className="font-ui text-[0.74rem] uppercase tracking-widest-2 text-cream">
+                PayPal
+              </div>
+              <div className="font-body text-[0.66rem] text-muted-warm">
+                Pay with your PayPal balance
+              </div>
+            </div>
+            {method === "paypal" && <Check className="h-4 w-4 text-gold-bright" />}
+          </button>
+        </div>
+      </section>
+
+      {/* Selected method widget */}
+      {method === "stripe" && (
+        <div className="rounded-sm border border-gold-soft/50 bg-deep/40 p-4">
+          {creatingIntent ? (
+            <div className="flex items-center justify-center py-4">
+              <Loader2 className="h-5 w-5 text-gold animate-spin" />
+            </div>
+          ) : stripeIntent ? (
+            stripeIntent.demo ? (
+              <div className="space-y-3">
+                <div className="flex items-start gap-2">
+                  <Sparkles className="h-4 w-4 text-gold-bright mt-0.5 flex-shrink-0" />
+                  <p className="font-body text-[0.8rem] text-cream/90">
+                    <strong className="text-gold-bright">Demo mode:</strong> Stripe
+                    is not configured with live keys yet. Press the button below
+                    to simulate a successful card payment and complete the order.
+                  </p>
+                </div>
+                <Button
+                  className="btn-gold w-full text-cream inline-flex items-center justify-center gap-2"
+                  onClick={onStripePayDemo}
+                >
+                  <CreditCard className="h-4 w-4" />
+                  Simulate card payment · {formatUSD(subtotal)}
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <p className="font-body text-[0.8rem] text-cream/90">
+                  Stripe loaded. A live card form would mount here using your
+                  publishable key. For this build, confirm the payment intent
+                  directly:
+                </p>
+                <Button
+                  className="btn-gold w-full text-cream inline-flex items-center justify-center gap-2"
+                  onClick={onStripePayDemo}
+                >
+                  <CreditCard className="h-4 w-4" />
+                  Confirm payment · {formatUSD(subtotal)}
+                </Button>
+              </div>
+            )
+          ) : null}
+        </div>
+      )}
+
+      {method === "paypal" && (
+        <div className="rounded-sm border border-gold-soft/50 bg-deep/40 p-4">
+          {creatingIntent ? (
+            <div className="flex items-center justify-center py-4">
+              <Loader2 className="h-5 w-5 text-gold animate-spin" />
+            </div>
+          ) : paypalOrder ? (
+            paypalOrder.demo ? (
+              <div className="space-y-3">
+                <div className="flex items-start gap-2">
+                  <Sparkles className="h-4 w-4 text-gold-bright mt-0.5 flex-shrink-0" />
+                  <p className="font-body text-[0.8rem] text-cream/90">
+                    <strong className="text-gold-bright">Demo mode:</strong> PayPal
+                    is not configured with live keys yet. Press the button below
+                    to simulate PayPal approval + capture and complete the order.
+                  </p>
+                </div>
+                <Button
+                  className="btn-gold w-full text-cream inline-flex items-center justify-center gap-2"
+                  onClick={onPaypalPayDemo}
+                >
+                  <CreditCard className="h-4 w-4" />
+                  Simulate PayPal payment · {formatUSD(subtotal)}
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <p className="font-body text-[0.8rem] text-cream/90">
+                  PayPal order <code className="text-gold">{paypalOrder.orderID}</code> created.
+                  A live PayPal SDK button would render here. For this build,
+                  simulate the buyer approval + capture:
+                </p>
+                <Button
+                  className="btn-gold w-full text-cream inline-flex items-center justify-center gap-2"
+                  onClick={onPaypalPayDemo}
+                >
+                  <CreditCard className="h-4 w-4" />
+                  Approve &amp; capture · {formatUSD(subtotal)}
+                </Button>
+              </div>
+            )
+          ) : null}
+        </div>
+      )}
+
+      {error && <p className="text-[0.78rem] text-ember font-ui">{error}</p>}
+
+      <div className="flex items-center justify-between">
+        <Button
+          variant="outline"
+          className="btn-outline-gold border border-gold/60 text-gold hover:text-gold-bright inline-flex items-center gap-2"
+          onClick={onBack}
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Back
+        </Button>
+        <div className="flex items-center gap-1.5 font-ui text-[0.58rem] uppercase tracking-widest-2 text-muted-warm">
+          <Shield className="h-3 w-3" />
+          Secured · no card details stored
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// STEP 3 — Confirmation
+// ============================================================
+function ConfirmationStep(props: {
+  order: OrderConfirmation;
+  email: string;
+  onClose: () => void;
+}) {
+  const { order, email, onClose } = props;
+  const totalUSD = (order.totalCents / 100).toFixed(2);
+  const [copied, setCopied] = useState(false);
+
+  const copyOrderId = () => {
+    try {
+      navigator.clipboard?.writeText(order.publicId);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch {}
+  };
+
+  return (
+    <div className="space-y-6 text-center">
+      <div className="mx-auto h-16 w-16 rounded-full bg-gradient-to-b from-[#F2C94C] to-[#D9B26B] flex items-center justify-center text-[#1A1407] shadow-[0_0_30px_-4px_rgba(217,178,107,0.7)]">
+        <CheckCircle2 className="h-9 w-9" />
+      </div>
+
+      <div>
+        <h3 className="font-heading text-cream text-2xl uppercase tracking-wide">
+          Thank you for your order
+        </h3>
+        <p className="font-body text-muted-warm mt-2 max-w-sm mx-auto">
+          A confirmation email is on its way to <span className="text-gold-bright">{email}</span>.
+        </p>
+      </div>
+
+      <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-gold-soft bg-deep/60">
+        <span className="font-ui text-[0.58rem] uppercase tracking-widest-2 text-muted-warm">
+          Order
+        </span>
+        <span className="font-heading text-gold-bright text-sm tracking-widest">
+          {order.publicId}
+        </span>
+        <button
+          onClick={copyOrderId}
+          aria-label="Copy order ID"
+          className="text-muted-warm hover:text-gold-bright transition-colors"
+        >
+          {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+        </button>
+      </div>
+
+      {/* What happens next */}
+      <div className="grid sm:grid-cols-2 gap-3 text-left">
+        {order.hasDigital && (
+          <div className="rounded-sm border border-gold-soft/50 bg-deep/40 p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <Download className="h-4 w-4 text-gold" />
+              <h4 className="font-heading text-cream uppercase tracking-wide text-[0.78rem]">
+                Your eBooks
+              </h4>
+            </div>
+            <p className="font-body text-[0.78rem] text-muted-warm leading-relaxed">
+              A secure download link for each eBook title has been emailed to you.
+              The link is valid for 7 days. Check your inbox (and spam folder).
+            </p>
+          </div>
+        )}
+        {order.hasPrint && (
+          <div className="rounded-sm border border-gold-soft/50 bg-deep/40 p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <Package className="h-4 w-4 text-gold" />
+              <h4 className="font-heading text-cream uppercase tracking-wide text-[0.78rem]">
+                Your print order
+              </h4>
+            </div>
+            <p className="font-body text-[0.78rem] text-muted-warm leading-relaxed">
+              Submitted to Lulu print-on-demand
+              {order.luluStatus && order.luluStatus !== "demo" ? ` (status: ${order.luluStatus})` : " (demo submission)"}.
+              You will receive a shipping confirmation from Lulu once your books
+              are dispatched.
+            </p>
+          </div>
+        )}
+      </div>
+
+      {/* Items */}
+      <div className="text-left">
+        <h4 className="font-heading text-gold uppercase tracking-widest-2 text-[0.72rem] mb-3">
+          In this order
+        </h4>
+        <ul className="space-y-2">
+          {order.items.map((it, i) => (
+            <li key={i} className="flex items-center gap-3">
+              {it.coverPath ? (
+                <img
+                  src={it.coverPath}
+                  alt=""
+                  className="h-12 w-9 object-cover rounded-sm frame-gold flex-shrink-0"
+                />
+              ) : (
+                <div className="h-12 w-9 bg-deep rounded-sm border border-gold-soft flex-shrink-0" />
+              )}
+              <div className="flex-1 min-w-0">
+                <div className="font-heading text-cream text-[0.86rem] uppercase tracking-wide truncate">
+                  {it.bookTitle}
+                </div>
+                <div className="font-ui text-[0.58rem] uppercase tracking-widest-2 text-gold/70">
+                  {FORMAT_LABEL[it.format as BookFormat] || it.format} × {it.quantity}
+                </div>
+              </div>
+            </li>
+          ))}
+        </ul>
+        <Separator className="my-3 bg-gold-soft/30" />
+        <div className="flex items-center justify-between">
+          <span className="font-ui text-[0.66rem] uppercase tracking-widest-2 text-muted-warm">
+            Total paid
+          </span>
+          <span className="font-heading text-cream text-lg">${totalUSD}</span>
+        </div>
+      </div>
+
+      <Button
+        className="btn-outline-gold border border-gold/60 text-gold hover:text-gold-bright inline-flex items-center gap-2"
+        onClick={onClose}
+      >
+        <BookOpen className="h-4 w-4" />
+        Back to browsing
+      </Button>
+    </div>
+  );
+}
+
+// ============================================================
+// Shared sub-components
+// ============================================================
+function OrderSummary({ items, subtotal, itemCount }: { items: CartItem[]; subtotal: number; itemCount: number; }) {
+  return (
+    <div className="rounded-sm border border-gold-soft/40 bg-deep/40 p-4">
+      <div className="flex items-center justify-between mb-3">
+        <span className="font-ui text-[0.6rem] uppercase tracking-widest-2 text-gold/80">
+          Order summary
+        </span>
+        <span className="font-ui text-[0.6rem] uppercase tracking-widest-2 text-muted-warm">
+          {itemCount} {itemCount === 1 ? "item" : "items"}
+        </span>
+      </div>
+      <ul className="space-y-2 max-h-40 overflow-y-auto pr-1">
+        {items.map((it, i) => (
+          <li key={i} className="flex items-center gap-3">
+            <img src={it.cover} alt="" className="h-12 w-9 object-cover rounded-sm frame-gold flex-shrink-0" />
+            <div className="flex-1 min-w-0">
+              <div className="font-heading text-cream text-[0.82rem] uppercase tracking-wide truncate">
+                {it.bookTitle}
+              </div>
+              <div className="font-ui text-[0.56rem] uppercase tracking-widest-2 text-gold/70">
+                {FORMAT_LABEL[it.format]} × {it.qty}
+              </div>
+            </div>
+            <div className="font-heading text-cream text-sm">
+              {formatUSD(it.unitPrice * it.qty)}
+            </div>
+          </li>
+        ))}
+      </ul>
+      <Separator className="my-3 bg-gold-soft/30" />
+      <div className="flex items-center justify-between">
+        <span className="font-ui text-[0.66rem] uppercase tracking-widest-2 text-muted-warm">
+          Subtotal
+        </span>
+        <span className="font-heading text-cream text-lg">{formatUSD(subtotal)}</span>
+      </div>
+    </div>
+  );
+}
+
+function SectionLabel({ icon: Icon, children }: { icon: any; children: React.ReactNode }) {
+  return (
+    <div className="flex items-center gap-2">
+      <Icon className="h-4 w-4 text-gold" />
+      <span className="font-heading text-gold uppercase tracking-widest-2 text-[0.78rem]">
+        {children}
+      </span>
+    </div>
+  );
+}
+
+function Field({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
+  return (
+    <div>
+      <Label className="font-ui text-[0.62rem] uppercase tracking-widest-2 text-cream/80 mb-1.5 block">
+        {label}
+      </Label>
+      {children}
+    </div>
+  );
+}

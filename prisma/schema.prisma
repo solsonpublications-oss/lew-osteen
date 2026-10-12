@@ -1,0 +1,124 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Post {
+  id        String   @id @default(cuid())
+  title     String
+  content   String?
+  published Boolean  @default(false)
+  authorId  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Newsletter subscribers — collected from the Coming Soon notify form
+// and the Launch List exit-intent modal.
+model Subscriber {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  source    String   @default("notify") // "notify" | "launch-list" | "footer-contact"
+  createdAt DateTime @default(now())
+}
+
+// Contact messages — collected from the footer contact form.
+model ContactMessage {
+  id        String   @id @default(cuid())
+  email     String
+  message   String
+  createdAt DateTime @default(now())
+}
+
+// Asset download counter — tracks how many times each press-kit asset is downloaded.
+model DownloadEvent {
+  id        String   @id @default(cuid())
+  asset     String   // slug identifying the asset (e.g. "book-cover", "media-kit-zip")
+  createdAt DateTime @default(now())
+}
+
+// ============================================================
+// ECOMMERCE — Orders placed through the site storefront.
+// No login: buyer identity is captured at checkout.
+// ============================================================
+model Order {
+  id              String   @id @default(cuid())
+  publicId        String   @unique // short, human-readable order ref e.g. "LO-7Q3K9"
+  status          String   @default("paid") // "paid" | "fulfilled" | "submitted-to-lulu" | "failed"
+  buyerEmail      String
+  buyerName       String?
+  buyerPhone      String?
+
+  // Shipping address — only set for paperback/hardcover orders.
+  shipLine1       String?
+  shipLine2      String?
+  shipCity        String?
+  shipState       String?
+  shipPostalCode String?
+  shipCountry      String?
+
+  // Payment details
+  paymentMethod   String   // "stripe" | "paypal" | "demo"
+  paymentRef      String?  // Stripe paymentIntent id / PayPal order id / demo ref
+
+  // Lulu submission reference (for print orders)
+  luluRef         String?
+  luluStatus      String?  // "demo" | "submitted" | "acknowledged" | "rejected"
+
+  totalCents      Int      // order grand total in cents (USD)
+  currency        String   @default("USD")
+  hasPrint        Boolean  @default(false) // true if any item is paperback/hardcover
+  hasDigital      Boolean  @default(false) // true if any item is ebook
+
+  notes           String?
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  items           OrderItem[]
+}
+
+model OrderItem {
+  id          String   @id @default(cuid())
+  orderId     String
+  order       Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  bookTitle   String
+  bookSlug    String
+  format      String   // "ebook" | "paperback" | "hardcover"
+  unitPriceCents Int
+  quantity    Int      @default(1)
+  ebookFile   String?  // path to the ebook file (for digital items)
+  coverPath   String?  // book cover image path (for display)
+  createdAt   DateTime @default(now())
+}
+
+// Time-limited secure download tokens for ebook fulfillment.
+// A buyer receives a download link that expires after 7 days.
+model EbookDownloadToken {
+  id        String   @id @default(cuid())
+  orderId   String
+  bookSlug  String
+  token     String   @unique
+  email     String
+  expiresAt DateTime
+  consumedAt DateTime?
+  createdAt DateTime @default(now())
+}
