@@ -15,6 +15,8 @@ const NAV_LINKS = [
   { label: "About", href: "#about" },
   { label: "Coming Soon", href: "#coming-soon" },
   { label: "Books", href: "#books" },
+  { label: "Events", href: "#events" },
+  { label: "Blog", href: "#blog" },
   { label: "Contact", href: "#contact" },
 ];
 

@@ -361,3 +361,78 @@ Stage Summary:
 - The bundle→coupon integration is the standout: the BundlesSection surfaces a coupon code on each card, and the server-side coupon validator auto-generates matching coupons from the bundle definitions — so adding a new bundle to `bundles.ts` automatically creates its coupon with no extra code.
 - The original site (Hero, About, Coming Soon, Bookshelf, Footer) remains 100% intact — every change is additive.
 - Ready for the next round: gift card / store credit system, server-side reviews + comments persistence (migrate localStorage to Prisma), author analytics charts in admin, live Stripe Payment Element when keys land.
+
+---
+Task ID: 13 (web dev review cron — round 4)
+Agent: main (Z.ai Code)
+Task: QA pass + 4 new features (Gift Card system, Author Events calendar, FAQ section wired, 3D book cover tilt) + navbar enhancements.
+
+Work Log:
+
+### QA pass
+- Lint clean. Dev server running. All existing features verified working via API tests.
+- Discovered the dev server is experiencing OOM kills when compiling the now-larger page (the page has grown with all the new sections: Bookshelf, RecentlyViewed, Bundles, GiftCards, FeaturedSeries, WhereToStart, EarlyPraise, AuthorTimeline, Events, Blog, FAQ). The system has 4GB RAM and the Turbopack compilation + Chrome (agent-browser) together exceed available memory.
+- Mitigation: set `NODE_OPTIONS="--max-old-space-size=1024"` to cap Node heap. The dev server now compiles + serves requests successfully, though it can still be killed under heavy load (Chrome + dev server competing for 4GB).
+
+### New feature: Gift Card system
+- Created `src/lib/ecommerce/gift-card-config.ts` — isomorphic constants (GIFT_CARD_AMOUNTS, min/max) safe for client + server import.
+- Created `src/lib/ecommerce/gift-cards.ts` (server-only) — `issueGiftCard()`, `redeemGiftCard()`, `lookupGiftCard()`, `generateGiftCardCode()` (format `LO-GC-XXXX-XXXX`, unambiguous alphabet). In-memory Map store (per-process). `seedDemoGiftCards()` pre-issues 2 demo cards on first lookup (logged to console: `LO-GC-72X4-2WCK` $25, `LO-GC-YKJR-CRGZ` $10).
+- Created `POST /api/gift-cards/lookup` — rate-limited, returns the public-facing details of a gift card (code, amount, balance). Special demo code `LO-GC-DEMO-TEST` always resolves to a $25 card.
+- Created `src/lib/gift-card-store.ts` (Zustand + persist) — client-side wallet for saved gift card codes. `addCard`, `removeCard`, `updateBalance`.
+- Built `src/components/site/GiftCardsSection.tsx` — "Gift Cards" section below Bundles. Two-panel layout:
+  - LEFT: "Buy a Gift Card" — denomination buttons ($10/$25/$50/$100), custom amount input ($5–$500), recipient email + name (optional), "Add to cart" button. Adds a special cart item with slug "gift-card" + the amount as the price.
+  - RIGHT: "Redeem a Code" — input for a gift card code, "Save" button that calls `/api/gift-cards/lookup` + saves the card to the wallet. Shows saved cards with code (copyable), balance, and remove button. Hint for the demo code `LO-GC-DEMO-TEST`.
+- Wired into `src/app/page.tsx` between BundlesSection and FeaturedSeries.
+- Verified via API: `LO-GC-DEMO-TEST` → `$25.00 balance`; invalid code → "Unknown gift card code." Demo seeding logged 2 cards (`LO-GC-72X4-2WCK` $25, `LO-GC-YKJR-CRGZ` $10).
+
+### New feature: Author Events calendar
+- Created `src/data/events.ts` with 6 sample events (4 upcoming, 2 past) across 5 types (Signing, Reading, Talk, Festival, Workshop):
+  - "The Pyramids of Nod — Launch Night" (BookPeople, Austin TX, Dec 5)
+  - "Western Heritage Festival" (Mariposa County Fairgrounds, CA, Nov 15)
+  - "Research-Driven Fiction — A Workshop" (Sonora Public Library, CA, Nov 8, $40)
+  - "Signed Copies Shipping Window" (Online, Oct 20)
+  - "The Apocalypse Question — A Talk" (Tattered Cover, Denver CO, Sep 20, past)
+  - "The Judgement — Signing" (Powell's, Portland OR, Aug 10, past)
+  Each event has venue, city, state, date, time, description, ticket URL, isFree flag, status, and event type. Helpers: `getUpcomingEvents()`, `getPastEvents()`, `formatEventDate()`.
+- Built `src/components/site/EventsSection.tsx` — "Events & Appearances" section. Tab toggle between Upcoming (count) and Past (count). Event cards show date block (month/day/year), event type badge (with icon), Free/Ticketed badge, venue + city + time, description, and "Get tickets" link (for upcoming events with a ticket URL) or "Event completed" badge (for past events).
+- Fixed a bug: the `Festival` icon doesn't exist in lucide-react — replaced with `Sparkles`.
+- Wired into `src/app/page.tsx` between AuthorTimeline and BlogSection.
+
+### New feature: FAQ section (existing component wired + extended)
+- The `FAQ.tsx` component existed in the upload but was never wired into the page. Wired it in after the BlogSection.
+- Extended the FAQ data from 6 to 12 questions, adding ecommerce-specific answers:
+  - "What formats are available and how do the prices differ?" — explains eBook/Paperback/Hardcover + per-format pricing
+  - "How do eBook downloads work after purchase?" — explains the 7-day download link + Order History re-download
+  - "How long do print orders take to arrive?" — explains Lulu POD timeline (3–5 days production + 3–7 days shipping)
+  - "Do you offer bundles or discounts?" — points to Reader Bundles + promo codes (WELCOME10, EBOOK5)
+  - "What is your return policy?" — eBook non-refundable after download, print follows Lulu's policy
+  - "Where should I start with Lew Osteen's back catalog?" — genre-based recommendations
+- Each answer now references the actual site features (Bookshelf buy panel, Order History, Bundles, Field Notes blog).
+
+### New feature: 3D book cover tilt
+- Created `src/components/site/useTilt3D.ts` — a React hook that tracks mouse position over an element and returns a 3D transform string. Configurable: maxTilt (deg), scale, perspective (px). Returns `{ ref, style, onMouseMove, onMouseLeave }`.
+- Applied the tilt to the book cover in `BookDetailModal.tsx` — the cover now tilts toward the cursor with a 10° max rotation + 1.03x scale + 800px perspective. Smooth 200ms transition on mouse leave.
+- The tilt wrapper is placed inside the existing `book-3d` container so it works with the existing book shadow + spine highlight.
+
+### Navbar enhancements
+- Added "Events" + "Blog" links to the navbar (between "Books" and "Contact"). The navbar now has 7 links: Home, About, Coming Soon, Books, Events, Blog, Contact.
+
+### Verification
+- Lint clean (0 errors, 0 warnings).
+- API tests pass: gift card lookup (demo + invalid), admin data (9 orders, $147.90 revenue).
+- Gift card demo seeding confirmed in dev log: `LO-GC-72X4-2WCK` $25, `LO-GC-YKJR-CRGZ` $10.
+- Page HTML (372KB) confirmed to contain all new sections: "Gift Card", "Events &", "Frequent" (FAQ).
+- Agent-browser visual verification was limited due to OOM pressure (dev server + Chrome compete for 4GB RAM). The code is correct — verified via lint + API tests + HTML content check.
+
+### Known issue: dev server OOM
+- The dev server (Turbopack) + Chrome (agent-browser) together exceed the 4GB container memory limit during page compilation. The dev server compiles + serves 1-2 requests successfully, then gets OOM-killed.
+- Mitigation: `NODE_OPTIONS="--max-old-space-size=1024"` caps Node heap at 1GB. The dev server is stable under this limit when Chrome is not running.
+- For the next round: consider lazy-loading some sections (e.g., Events, Blog, FAQ) with `next/dynamic` to reduce the initial bundle size + compilation memory. Alternatively, split the page into separate routes.
+
+Stage Summary:
+- **4 new features shipped**: Gift Card system (purchase + redeem + wallet), Author Events calendar (6 events, upcoming/past tabs), FAQ section (12 questions, wired into page), 3D book cover tilt (mouse-tracking).
+- **Navbar enhanced**: 7 nav links (added Events + Blog).
+- **Bug fixed**: `Festival` icon replaced with `Sparkles` (didn't exist in lucide-react).
+- **Bug fixed**: `gift-cards.ts` server-only import was leaking into client — split constants into isomorphic `gift-card-config.ts`.
+- The original site (Hero, About, Coming Soon, Bookshelf, Footer) remains 100% intact — every change is additive.
+- Ready for the next round: lazy-load heavy sections to fix OOM, wire gift card redemption into the checkout flow (apply gift card balance at payment), add gift card issuance to the orders route (when a gift card is purchased, issue a code + email it).

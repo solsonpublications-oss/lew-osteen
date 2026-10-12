@@ -22,6 +22,9 @@ import { WishlistDialog } from "@/components/site/WishlistDialog";
 import { RecentlyViewed } from "@/components/site/RecentlyViewed";
 import { BlogSection } from "@/components/site/BlogSection";
 import { BundlesSection } from "@/components/site/BundlesSection";
+import { GiftCardsSection } from "@/components/site/GiftCardsSection";
+import { EventsSection } from "@/components/site/EventsSection";
+import { FAQ } from "@/components/site/FAQ";
 
 export default function Home() {
   return (
@@ -42,12 +45,16 @@ export default function Home() {
         {/* Recently viewed appears here once the visitor has opened ≥1 book */}
         <RecentlyViewed />
         <BundlesSection />
+        <GiftCardsSection />
         <FeaturedSeries />
         <WhereToStart />
         <SectionDivider variant="pyramid" />
         <EarlyPraise />
         <AuthorTimeline />
+        <EventsSection />
         <BlogSection />
+        <SectionDivider variant="double-line" />
+        <FAQ />
       </main>
       <Footer />
       <BackToTop />

@@ -40,6 +40,7 @@ import { toast } from "sonner";
 import { getExcerpt } from "@/data/excerpts";
 import { ExcerptViewer } from "./ExcerptViewer";
 import { ReviewsSection } from "./ReviewsSection";
+import { useTilt3D } from "./useTilt3D";
 
 type BookDetailModalProps = {
   book: Book | null;
@@ -84,6 +85,7 @@ export function BookDetailModal({ book, open, onOpenChange }: BookDetailModalPro
   const [excerptOpen, setExcerptOpen] = useState(false);
 
   const excerptAvailable = book ? !!getExcerpt(bookSlug(book.title)) : false;
+  const tilt3d = useTilt3D({ maxTilt: 10, scale: 1.03, perspective: 800 });
 
   // Close the share menu on outside click / Escape.
   useEffect(() => {
@@ -212,12 +214,14 @@ export function BookDetailModal({ book, open, onOpenChange }: BookDetailModalPro
                 aria-hidden="true"
               />
               <div className="book-3d relative">
+                <div {...tilt3d} className="rounded-sm">
                 <BookCover
                   src={book.cover}
                   alt={`Cover of ${book.title} by Lew Osteen`}
                   title={book.title}
                   subtitle={book.subtitle}
                 />
+                </div>
               </div>
             </div>
           </div>
