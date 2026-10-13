@@ -2,7 +2,6 @@
 
 import { useState, type FormEvent } from "react";
 import { Mail, Loader2, CheckCircle2, BookOpen, FileText } from "lucide-react";
-import { AUTHOR_AMAZON_URL } from "@/data/books";
 import { QuoteOfTheDay } from "./QuoteOfTheDay";
 
 const NAV_LINKS = [
@@ -156,16 +155,14 @@ export function Footer() {
             <ul className="space-y-3">
               <li>
                 <a
-                  href={AUTHOR_AMAZON_URL}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                  href="/#books"
                   className="group inline-flex items-center gap-2 text-cream/80 hover:text-gold-bright transition-colors"
                 >
                   <span className="h-8 w-8 rounded-full border border-gold/40 flex items-center justify-center group-hover:border-gold transition-colors">
                     <BookOpen className="h-4 w-4 text-gold" />
                   </span>
                   <span className="font-ui text-[0.74rem] uppercase tracking-widest-2">
-                    Amazon Author Page
+                    Browse Bookshelf
                   </span>
                 </a>
               </li>

@@ -1,13 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, ExternalLink, Info, Shuffle, Search, X, ArrowDownWideNarrow } from "lucide-react";
+import { ChevronLeft, ChevronRight, Info, Shuffle, Search, X, ArrowDownWideNarrow } from "lucide-react";
 import { books, type Book, type Genre, GENRES } from "@/data/books";
 import { BookCover } from "./BookCover";
-import { BookDetailModal } from "./BookDetailModal";
 import { RevealOnScroll } from "./RevealOnScroll";
 import { SectionHeading } from "./SectionHeading";
 import { useRecentlyViewed } from "@/lib/recently-viewed-store";
+import { bookSlug } from "@/lib/slug";
 import { cn } from "@/lib/utils";
 
 const SPEED_PX_PER_SEC = 48; // slow drift
@@ -53,17 +53,14 @@ export function Bookshelf() {
     return prices.length ? Math.min(...prices) : 0;
   }, []);
 
-  // Selected book for the detail modal.
-  const [selectedBook, setSelectedBook] = useState<Book | null>(null);
-  const [modalOpen, setModalOpen] = useState(false);
+  // Navigate to the product page when a book is clicked.
   const trackViewed = useRecentlyViewed((s) => s.track);
-
-  // When a book is opened in the modal, record it in recently-viewed.
   const openBook = useCallback(
     (book: Book) => {
-      setSelectedBook(book);
-      setModalOpen(true);
       trackViewed(book);
+      // Navigate to the dedicated product page.
+      const slug = bookSlug(book.title);
+      window.location.href = `/book/${slug}`;
     },
     [trackViewed]
   );
@@ -447,16 +444,6 @@ export function Bookshelf() {
         </div>
         )}
 
-        {/* Detail modal */}
-        <BookDetailModal
-          book={selectedBook}
-          open={modalOpen}
-          onOpenChange={(o) => {
-            setModalOpen(o);
-            if (!o) setSelectedBook(null);
-          }}
-        />
-
         {/* Shelf ledge */}
         <div className="shelf-ledge mx-2 sm:mx-5 rounded-sm" />
       </div>
@@ -546,21 +533,11 @@ function BookCard({
                 e.stopPropagation();
                 onSelect();
               }}
-              className="btn-outline-gold inline-flex items-center justify-center gap-1.5 text-[0.62rem] py-2 px-3"
+              className="btn-gold inline-flex items-center justify-center gap-1.5 text-[0.62rem] py-2 px-3"
             >
               <Info className="h-3 w-3" />
               View Details
             </button>
-            <a
-              href={book.amazonUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="btn-gold inline-flex items-center justify-center gap-1.5 text-[0.62rem] py-2 px-3"
-              onClick={(e) => e.stopPropagation()}
-            >
-              View on Amazon
-              <ExternalLink className="h-3 w-3" />
-            </a>
           </div>
         </div>
       </div>

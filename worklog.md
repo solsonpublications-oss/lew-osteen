@@ -641,3 +641,59 @@ Task: Migrate book reviews + blog comments from localStorage to Prisma (server-s
 
 3. **Live Stripe Payment Element** — When `STRIPE_PUBLISHABLE_KEY` is set, the demo "Simulate card payment" button should be replaced with the real Stripe.js Payment Element.
 
+
+---
+Task ID: 18 (user-requested change — product pages + remove Amazon)
+Agent: main (Z.ai Code)
+Task: Replace the BookDetailModal panel with a dedicated product page at /book/[slug], remove all "View on Amazon" / "Also on Amazon" buttons, ensure every book has Add to Cart + Buy Now buttons.
+
+## Changes
+
+### 1. Bookshelf now navigates to product page (not modal)
+- Updated `src/components/site/Bookshelf.tsx` — `openBook()` now does `window.location.href = /book/${slug}` instead of opening a modal.
+- Removed the `BookDetailModal` instance from the Bookshelf (no longer needed).
+- Removed the unused `BookDetailModal` import.
+- The "View Details" button on each book card still calls `onSelect()` which navigates to the product page.
+- Removed the "View on Amazon" button from the hover overlay.
+
+### 2. Product page updated with buy panel
+- Updated `src/app/book/[slug]/page.tsx`:
+  - Removed the "View on Amazon" button.
+  - Added `BookProductClient` component (the buy panel) in place of the Amazon button.
+  - The page now shows: cover + 3D tilt, genre/year badges, title/subtitle, description, **format selector** (eBook/Paperback/Hardcover with prices), **Add to Cart** button, **Buy Now** button, wishlist heart, Read Excerpt button, and the reviews section.
+  - Related books still shown at the bottom.
+- Created `src/components/site/BookProductClient.tsx` — a client component that contains:
+  - The format selector (radio group with per-format prices)
+  - Add to Cart button (adds to cart + toast)
+  - Buy Now button (opens checkout dialog directly)
+  - Wishlist heart toggle
+  - Read Excerpt button (opens ExcerptViewer)
+  - ReviewsSection (fetches from /api/reviews — server-side persisted)
+  - 3D tilt effect on the cover (via useTilt3D)
+  - Recently viewed tracking on page load
+
+### 3. Removed all Amazon buttons
+- `Bookshelf.tsx` — removed "View on Amazon" from hover overlay.
+- `BookDetailModal.tsx` — removed "Also on Amazon" link.
+- `AboutAuthor.tsx` — replaced "View Author Page on Amazon" + "Browse the Bookshelf" with "Browse the Bookshelf" (links to /#books) + "Gift Cards" (links to /#gift-cards).
+- `FeaturedSeries.tsx` — trilogy book links now go to `/book/[slug]` instead of Amazon.
+- `WhereToStart.tsx` — recommendation cards now link to `/book/[slug]` instead of Amazon.
+- `WhatsNew.tsx` — "View on Amazon" replaced with "View Details" linking to `/book/[slug]`.
+- `Footer.tsx` — "Amazon Author Page" link replaced with "Browse Bookshelf" linking to /#books. Removed `AUTHOR_AMAZON_URL` import.
+- Cleaned up unused `ExternalLink` imports from WhatsNew, WhereToStart, FeaturedSeries, Bookshelf, BookDetailModal.
+
+### 4. Cleanup
+- Removed unused imports: `ExternalLink` from 6 files, `BookDetailModal` from Bookshelf, `AUTHOR_AMAZON_URL` from Footer.
+- Lint passes with 0 errors and 0 warnings.
+
+### Verification
+- Homepage: 200 ✓
+- Book page `/book/the-judgement`: 200 ✓ (104KB of HTML)
+- Book page contains: "Add to Cart" ✓, "Buy Now" ✓, "Buy from Lew Osteen" ✓
+- Book page does NOT contain any visible Amazon buttons ✓ (the only "amazon" references are in JSON-LD SEO schema data + the book data object's `amazonUrl` field which is no longer rendered)
+- Lint: 0 errors, 0 warnings ✓
+
+## Notes
+- The `amazonUrl` field still exists in the `Book` type in `src/data/books.ts` — it's just data, not rendered anywhere. This is fine; it could be removed from the type if desired, but it's harmless to keep.
+- The `BookDetailModal` is still used by the `RecentlyViewed` section (which has its own modal instance). The Bookshelf no longer uses it — it navigates to the product page instead.
+- The `AUTHOR_AMAZON_URL` constant still exists in `src/data/books.ts` but is no longer imported by any component.

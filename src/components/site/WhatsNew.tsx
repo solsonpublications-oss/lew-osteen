@@ -2,7 +2,7 @@
 
 import { RevealOnScroll } from "./RevealOnScroll";
 import { SectionHeading } from "./SectionHeading";
-import { ExternalLink, Sparkles } from "lucide-react";
+import { Sparkles } from "lucide-react";
 import { books } from "@/data/books";
 
 // "What's New" — recent catalog additions, sorted by year (desc).
@@ -120,13 +120,10 @@ export function WhatsNew() {
                       </p>
                       {book && (
                         <a
-                          href={book.amazonUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
+                          href={`/book/${book.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}`}
                           className="inline-flex items-center gap-1.5 font-ui text-[0.6rem] uppercase tracking-widest-2 text-gold hover:text-gold-bright transition-colors"
                         >
-                          View on Amazon
-                          <ExternalLink className="h-3 w-3" />
+                          View Details
                         </a>
                       )}
                     </div>

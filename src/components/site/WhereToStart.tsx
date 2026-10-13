@@ -4,7 +4,7 @@ import { RevealOnScroll } from "./RevealOnScroll";
 import { SectionHeading } from "./SectionHeading";
 import { books, type Book } from "@/data/books";
 import { BookCover } from "./BookCover";
-import { ExternalLink, ArrowRight } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 
 // Curated entry points for different reader interests.
 // Each pick links to a real book in the catalog.
@@ -65,9 +65,7 @@ export function WhereToStart() {
           {validPicks.map((p, i) => (
             <RevealOnScroll key={i} delay={i * 100}>
               <a
-                href={p.book?.amazonUrl}
-                target="_blank"
-                rel="noopener noreferrer"
+                href={p.book ? `/book/${p.book.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}` : "/#books"}
                 className="group block h-full bg-panel/40 border border-gold-soft rounded-sm p-5 hover:border-gold/50 hover:bg-panel/70 transition-all hover:-translate-y-1"
               >
                 {/* small cover */}
@@ -103,7 +101,6 @@ export function WhereToStart() {
                 <div className="flex items-center gap-1.5 font-ui text-[0.6rem] uppercase tracking-widest-2 text-gold group-hover:text-gold-bright transition-colors pt-3 border-t border-gold-soft/40">
                   Start here
                   <ArrowRight className="h-3 w-3 group-hover:translate-x-0.5 transition-transform" />
-                  <ExternalLink className="h-3 w-3 ml-auto opacity-60" />
                 </div>
               </a>
             </RevealOnScroll>

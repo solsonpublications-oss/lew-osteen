@@ -5,7 +5,7 @@ import { RevealOnScroll } from "./RevealOnScroll";
 import { SectionHeading } from "./SectionHeading";
 import { books } from "@/data/books";
 import { BookCover } from "./BookCover";
-import { ExternalLink, BookOpen, Mail, Loader2, CheckCircle2, Bell } from "lucide-react";
+import { BookOpen, Mail, Loader2, CheckCircle2, Bell } from "lucide-react";
 
 // The Joshua Trail Trilogy — pulled from the books data.
 const TRILOGY_TITLES = [
@@ -131,9 +131,7 @@ export function FeaturedSeries() {
               {trilogy.map((b, i) => (
                 <li key={b.title}>
                   <a
-                    href={b.amazonUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                    href={`/book/${b.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}`}
                     className="group flex items-center gap-3 p-3 rounded-sm border border-gold-soft/40 hover:border-gold/50 hover:bg-gold/5 transition-all"
                   >
                     <span className="h-7 w-7 rounded-full bg-deep border border-gold/40 flex items-center justify-center font-heading text-gold text-xs flex-shrink-0">
@@ -147,7 +145,6 @@ export function FeaturedSeries() {
                         {b.subtitle}
                       </p>
                     </div>
-                    <ExternalLink className="h-3.5 w-3.5 text-gold/60 group-hover:text-gold-bright transition-colors flex-shrink-0" />
                   </a>
                 </li>
               ))}
