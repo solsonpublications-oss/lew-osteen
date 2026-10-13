@@ -169,6 +169,7 @@ export function CheckoutDialog() {
             bookSlug: i.bookSlug,
             format: i.format,
             qty: i.qty,
+            unitPrice: i.unitPrice,
           })),
         }),
       });
@@ -264,6 +265,7 @@ export function CheckoutDialog() {
             bookSlug: i.bookSlug,
             format: i.format,
             qty: i.qty,
+            unitPrice: i.unitPrice,
           })),
           buyerEmail: email,
         }),
@@ -299,6 +301,7 @@ export function CheckoutDialog() {
             bookSlug: i.bookSlug,
             format: i.format,
             qty: i.qty,
+            unitPrice: i.unitPrice,
           })),
           buyerEmail: email,
         }),
@@ -364,6 +367,7 @@ export function CheckoutDialog() {
           bookSlug: i.bookSlug,
           format: i.format,
           qty: i.qty,
+            unitPrice: i.unitPrice,
         })),
         notes: notes.trim() || undefined,
         buyNow: !!buyNowItem,
@@ -404,6 +408,7 @@ export function CheckoutDialog() {
           cover: i.cover,
           format: i.format,
           qty: i.qty,
+            unitPrice: i.unitPrice,
         })),
       });
       toast.success("Order placed!", {

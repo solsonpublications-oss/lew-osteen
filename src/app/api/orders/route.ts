@@ -11,6 +11,7 @@ import { generatePublicId, generateToken } from "@/lib/ecommerce/public-id";
 import { getSiteUrl, isDemoMode } from "@/lib/ecommerce/config";
 import { fromCents, formatUSD } from "@/lib/ecommerce/money";
 import { validateCoupon, incrementRedemption } from "@/lib/ecommerce/coupons";
+import { issueGiftCard } from "@/lib/ecommerce/gift-cards";
 import {
   sendBuyerEbookEmail,
   sendBuyerPrintEmail,
@@ -343,6 +344,47 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // --- gift card issuance: if the order includes gift card line items,
+    // issue a code for each + email it to the buyer (or the recipient if
+    // the buyer specified one). ---
+    const giftCardItems = items.filter((i) => i.bookSlug === "gift-card");
+    const issuedGiftCards: Array<{ code: string; amountCents: number }> = [];
+    if (giftCardItems.length > 0) {
+      for (const gc of giftCardItems) {
+        const card = issueGiftCard({
+          amountCents: gc.unitPriceCents * gc.qty,
+          issuedTo: buyerEmail,
+          notes: `Order ${publicId}`,
+        });
+        issuedGiftCards.push({ code: card.code, amountCents: card.amountCents });
+        console.log(
+          `[orders] Gift card issued: ${card.code} — $${(card.amountCents / 100).toFixed(2)} for ${buyerEmail}`
+        );
+      }
+      // Email the gift card code(s) to the buyer.
+      // Reuses sendMail via a lightweight inline composer.
+      try {
+        const { sendMail: _sm } = await import("@/lib/ecommerce/email");
+        const gcHtml = `<div style="font-family:Georgia,serif;background:#0D0B0A;color:#F3EBDD;padding:32px;">
+          <h2 style="color:#D9B26B;">Your Gift Card from Lew Osteen</h2>
+          <p style="color:#F3EBDD;">Thank you for your purchase. Your gift card code(s):</p>
+          ${issuedGiftCards.map((c) => `<div style="background:#15120F;border:1px solid #D9B26B;border-radius:4px;padding:16px;margin:12px 0;text-align:center;">
+            <div style="font-size:24px;letter-spacing:4px;color:#F2C94C;font-family:'Courier New',monospace;">${c.code}</div>
+            <div style="font-size:14px;color:#A89F8E;margin-top:8px;">Value: $${(c.amountCents / 100).toFixed(2)}</div>
+          </div>`).join("")}
+          <p style="color:#A89F8E;font-size:12px;">Use this code at checkout on lewosteen.com.</p>
+        </div>`;
+        await _sm({
+          to: buyerEmail,
+          subject: `Your gift card from Lew Osteen — order ${publicId}`,
+          html: gcHtml,
+          text: `Your gift card from Lew Osteen (order ${publicId})\n\n${issuedGiftCards.map((c) => `- ${c.code} ($${(c.amountCents / 100).toFixed(2)})`).join("\n")}`,
+        });
+      } catch (e) {
+        console.error("[orders] gift card email failed:", e);
+      }
+    }
+
     return NextResponse.json({
       ok: true,
       order: {
@@ -369,6 +411,7 @@ export async function POST(req: NextRequest) {
           lineTotalCents: it.lineTotalCents,
           coverPath: it.coverPath,
         })),
+        giftCards: issuedGiftCards.length > 0 ? issuedGiftCards : undefined,
       },
     });
   } catch (err) {

@@ -23,6 +23,10 @@ export type IncomingItem = {
   bookSlug: string;
   format: BookFormat;
   qty: number;
+  /** Optional unit price (USD). Only used for gift card items
+   * (slug === "gift-card") where there's no canonical book price.
+   * Ignored for regular books (server recomputes from book data). */
+  unitPrice?: number;
 };
 
 export type ValidatedItem = {
@@ -112,12 +116,57 @@ export function validateCartItems(input: unknown): ValidationResult {
       return { ok: false, error: `Item ${i + 1} has an invalid format.` };
     }
 
+    const f = format as BookFormat;
+
+    // --- Special case: gift card line items ---
+    // Gift cards don't have a book entry; they use the slug "gift-card"
+    // and the price is whatever the buyer chose ($5–$500). We accept the
+    // client-specified unitPrice (from the raw item) since there's no
+    // canonical book to look up. The qty is still clamped to 1–99.
+    if (slug === "gift-card") {
+      let gcQty = typeof qtyRaw === "number" ? qtyRaw : Number(qtyRaw);
+      if (!Number.isFinite(gcQty) || !isInt(gcQty)) {
+        return { ok: false, error: `Item ${i + 1} has an invalid quantity.` };
+      }
+      gcQty = Math.max(MIN_QTY, Math.min(MAX_QTY, gcQty));
+
+      // Gift cards require a client-provided unit price ($5–$500).
+      const gcUnitPriceUSD = typeof raw.unitPrice === "number" ? raw.unitPrice : (typeof raw.unitPrice === "string" ? Number(raw.unitPrice) : NaN);
+      if (!Number.isFinite(gcUnitPriceUSD) || gcUnitPriceUSD < 5 || gcUnitPriceUSD > 500) {
+        return { ok: false, error: `Gift card amount must be between $5 and $500.` };
+      }
+
+      const key = `gift-card:${f}`;
+      if (seenKeys.has(key)) {
+        return { ok: false, error: `Duplicate gift card item.` };
+      }
+      seenKeys.add(key);
+
+      const gcUnitPriceCents = toCents(gcUnitPriceUSD);
+      const gcLineTotalCents = gcUnitPriceCents * gcQty;
+      totalCents += gcLineTotalCents;
+
+      hasDigital = true; // gift cards are digital
+      items.push({
+        bookSlug: slug,
+        bookTitle: `Gift Card — $${gcUnitPriceUSD.toFixed(2)}`,
+        format: f,
+        qty: gcQty,
+        unitPriceCents: gcUnitPriceCents,
+        lineTotalCents: gcLineTotalCents,
+        coverPath: undefined,
+        ebookFile: undefined,
+        requiresShipping: false,
+      });
+      continue;
+    }
+    // --- End gift card special case ---
+
     const book = findBookBySlug(slug);
     if (!book) {
       return { ok: false, error: `Unknown book: "${slug}".` };
     }
 
-    const f = format as BookFormat;
     const unitPrice = book.pricing[f];
     if (unitPrice == null) {
       return {

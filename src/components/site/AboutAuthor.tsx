@@ -3,12 +3,13 @@
 import { Award, BookMarked, Compass } from "lucide-react";
 import { RevealOnScroll } from "./RevealOnScroll";
 import { SectionHeading } from "./SectionHeading";
+import { useCountUp } from "./useCountUp";
 
 const STATS = [
-  { icon: BookMarked, label: "9+ Books", sub: "Across multiple genres" },
-  { icon: Award, label: "Award-Winning Writer", sub: "Historically researched novels" },
-  { icon: Compass, label: "Historical & Sci-Fi", sub: "From westerns to the stars" },
-];
+  { icon: BookMarked, value: 15, suffix: "+", label: "Books Published", sub: "Across 6 genres" },
+  { icon: Award, value: 40, suffix: "+", label: "Years Writing", sub: "Award-winning career" },
+  { icon: Compass, value: 6, suffix: "", label: "Genres Mastered", sub: "From westerns to the stars" },
+] as const;
 
 export function AboutAuthor() {
   return (
@@ -83,18 +84,7 @@ export function AboutAuthor() {
             {/* Stat chips */}
             <div className="grid sm:grid-cols-3 gap-3 mt-8">
               {STATS.map((s) => (
-                <div
-                  key={s.label}
-                  className="bg-panel/70 border border-gold-soft rounded-sm p-4 text-center hover:border-gold/50 transition-colors group"
-                >
-                  <s.icon className="h-5 w-5 mx-auto text-gold mb-2 group-hover:text-gold-bright transition-colors" />
-                  <p className="font-heading text-cream text-sm uppercase tracking-wide">
-                    {s.label}
-                  </p>
-                  <p className="font-ui text-[0.62rem] uppercase tracking-widest-2 text-muted-warm mt-1">
-                    {s.sub}
-                  </p>
-                </div>
+                <StatChip key={s.label} {...s} />
               ))}
             </div>
 
