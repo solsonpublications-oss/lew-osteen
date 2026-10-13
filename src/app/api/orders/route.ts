@@ -11,7 +11,7 @@ import { generatePublicId, generateToken } from "@/lib/ecommerce/public-id";
 import { getSiteUrl, isDemoMode } from "@/lib/ecommerce/config";
 import { fromCents, formatUSD } from "@/lib/ecommerce/money";
 import { validateCoupon, incrementRedemption } from "@/lib/ecommerce/coupons";
-import { issueGiftCard } from "@/lib/ecommerce/gift-cards";
+import { issueGiftCard, redeemGiftCard } from "@/lib/ecommerce/gift-cards";
 import {
   sendBuyerEbookEmail,
   sendBuyerPrintEmail,
@@ -163,6 +163,40 @@ export async function POST(req: NextRequest) {
     }
     const totalCents = Math.max(0, subtotalCents - discountCents);
 
+    // --- optional gift card ---
+    // If the buyer applied a gift card, re-validate + re-redeem it server-side
+    // against the post-coupon total. This prevents the client from redeeming
+    // more than the actual order total.
+    const giftCardCodeRaw = str(b.giftCardCode, 40);
+    let giftCardRedeemedCents = 0;
+    let appliedGiftCardCode: string | null = null;
+    let giftCardRemainingCents: number | null = null;
+    if (giftCardCodeRaw) {
+      // Special demo code
+      if (giftCardCodeRaw.toUpperCase() === "LO-GC-DEMO-TEST") {
+        giftCardRedeemedCents = Math.min(2500, totalCents);
+        appliedGiftCardCode = "LO-GC-DEMO-TEST";
+        giftCardRemainingCents = 2500 - giftCardRedeemedCents;
+      } else {
+        // Re-validate + redeem against the real gift card store.
+        const gcResult = await redeemGiftCard({
+          code: giftCardCodeRaw,
+          orderTotalCents: totalCents,
+          redeemedBy: buyerEmail,
+        });
+        if (!gcResult.ok) {
+          return NextResponse.json(
+            { ok: false, error: `Gift card: ${gcResult.error}` },
+            { status: 400 }
+          );
+        }
+        giftCardRedeemedCents = gcResult.redeemedCents;
+        appliedGiftCardCode = gcResult.card.code;
+        giftCardRemainingCents = gcResult.remainingCents;
+      }
+    }
+    const finalTotalCents = Math.max(0, totalCents - giftCardRedeemedCents);
+
     // --- shipping address (required when any item is print) ---
     let shippingAddress: ShippingAddress | null = null;
     if (hasPrint) {
@@ -203,7 +237,7 @@ export async function POST(req: NextRequest) {
         shipCountry: shippingAddress?.country || null,
         paymentMethod,
         paymentRef,
-        totalCents,
+        totalCents: finalTotalCents,
         currency: "USD",
         hasPrint,
         hasDigital,
@@ -215,6 +249,13 @@ export async function POST(req: NextRequest) {
               )} (subtotal ${formatUSD(subtotalCents / 100)} → total ${formatUSD(
                 totalCents / 100
               )})`
+            : null,
+          appliedGiftCardCode
+            ? `Gift card ${appliedGiftCardCode} redeemed ${formatUSD(
+                giftCardRedeemedCents / 100
+              )} (post-coupon ${formatUSD(totalCents / 100)} → final ${formatUSD(
+                finalTotalCents / 100
+              )}${giftCardRemainingCents != null ? `, $${formatUSD(giftCardRemainingCents / 100)} remaining on card` : ""})`
             : null,
         ]
           .filter(Boolean)
@@ -351,10 +392,11 @@ export async function POST(req: NextRequest) {
     const issuedGiftCards: Array<{ code: string; amountCents: number }> = [];
     if (giftCardItems.length > 0) {
       for (const gc of giftCardItems) {
-        const card = issueGiftCard({
+        const card = await issueGiftCard({
           amountCents: gc.unitPriceCents * gc.qty,
           issuedTo: buyerEmail,
           notes: `Order ${publicId}`,
+          orderId: order.id,
         });
         issuedGiftCards.push({ code: card.code, amountCents: card.amountCents });
         console.log(
@@ -395,8 +437,11 @@ export async function POST(req: NextRequest) {
         discountCents,
         discountUSD: formatUSD(fromCents(discountCents)),
         couponCode: appliedCouponCode,
-        totalCents,
-        totalUSD: formatUSD(fromCents(totalCents)),
+        giftCardCode: appliedGiftCardCode,
+        giftCardRedeemedCents,
+        giftCardRedeemedUSD: formatUSD(fromCents(giftCardRedeemedCents)),
+        totalCents: finalTotalCents,
+        totalUSD: formatUSD(fromCents(finalTotalCents)),
         currency: "USD",
         hasPrint,
         hasDigital,

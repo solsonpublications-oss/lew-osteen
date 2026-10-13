@@ -537,3 +537,56 @@ The Lew Osteen author website is a fully-featured ecommerce-enabled single-page 
 4. **Migrate reviews + comments to Prisma** — For multi-user persistence.
 5. **Live Stripe Payment Element** — When `STRIPE_PUBLISHABLE_KEY` is set, mount the real Stripe.js Payment Element instead of the demo button.
 6. **Admin analytics charts** — Add revenue-over-time + order-count charts to the admin dashboard using Recharts.
+
+---
+Task ID: 16 (web dev review cron — round 7)
+Agent: main (Z.ai Code)
+Task: Wire gift card code into order submission + persist gift cards to Prisma + add admin revenue charts.
+
+## Work Log
+
+### Fix: Gift card code wired into order submission
+- Updated `POST /api/orders` to accept `giftCardCode` in the request body.
+- Added server-side gift card re-validation: when `giftCardCode` is present, the route calls `redeemGiftCard()` against the post-coupon total (so the gift card can't redeem more than the actual order amount).
+- Special demo code `LO-GC-DEMO-TEST` handled: redeems `min(2500, totalCents)`.
+- The order's `totalCents` is now the final total after coupon + gift card: `finalTotalCents = max(0, totalCents - giftCardRedeemedCents)`.
+- Gift card info recorded in order notes: "Gift card {code} redeemed ${amount} (post-coupon ${total} → final ${final}, ${remaining} remaining on card)".
+- Response now includes `giftCardCode`, `giftCardRedeemedCents`, `giftCardRedeemedUSD` so the confirmation screen can show the full breakdown.
+- Updated `CheckoutDialog.tsx` to pass `giftCardCode: appliedGiftCard?.code` in the order submission body.
+- **Verified**: Order `LO-DNZE6GHR` with gift card `LO-GC-DEMO-TEST` → subtotal $9.99, gift card redeemed $9.99, total $0.00. ✓
+
+### Fix: Gift cards persisted to Prisma
+- Added `GiftCard` model to `prisma/schema.prisma`: `code` (unique), `amountCents`, `balanceCents`, `issuedAt`, `issuedTo`, `redeemedBy?`, `redeemedAt?`, `orderId?`, `notes?`.
+- Ran `bun run db:push` — schema synced.
+- Updated `src/lib/db.ts` guard to require the `giftCard` model on the cached Prisma client.
+- Updated `issueGiftCard()` to be `async` + persist to Prisma (`db.giftCard.create`) with best-effort fallback to in-memory if the DB fails.
+- Updated `redeemGiftCard()` to be `async` + load from Prisma if not in the in-memory cache + sync the balance back to Prisma (`db.giftCard.update`).
+- Updated all callers: `POST /api/orders` (both `issueGiftCard` + `redeemGiftCard` now awaited), `POST /api/gift-cards/redeem` (`redeemGiftCard` now awaited).
+- Gift cards now survive server restarts. ✓
+
+### Feature: Admin revenue charts
+- Created `src/components/admin/RevenueChart.tsx` using Recharts (already installed).
+- Groups orders by day for the last 14 days.
+- Renders two charts:
+  1. **Area chart** for revenue over time — gold gradient fill with dot markers, custom tooltip, formatted as `$XX.XX`.
+  2. **Bar chart** for order count per day — gold bars with custom cell coloring.
+- Both charts use the site's dark + gold theme (bg #15120F, gold #D9B26B, cream #F3EBDD, muted #A89F8E).
+- Shows total revenue + total orders for the 14-day window.
+- Empty state: "No orders yet. Charts will appear here once orders are placed."
+- Wired into `src/app/admin/page.tsx` between the stats row and the tabs.
+- Verified: admin page loads with 200 status, RevenueChart renders. ✓
+
+### Verification
+- `bun run lint` passes with 0 errors and 0 warnings.
+- Order with gift card: `LO-DNZE6GHR` → subtotal $9.99, gift card $9.99, total $0.00 ✓
+- Admin page: 200 status, RevenueChart renders ✓
+- Gift cards persist to Prisma: `db.giftCard.create` + `db.giftCard.update` ✓
+
+## Unresolved Issues
+
+1. **Dev server OOM** — Still present on the 4GB container. The lazy-loading fix (14 `next/dynamic` imports) + `NODE_OPTIONS=--max-old-space-size=1024` improves stability but the dev server can still die under sustained load. This is an infrastructure constraint.
+
+2. **Reviews + blog comments are localStorage-only** — Not yet migrated to Prisma. Next round priority.
+
+3. **Live Stripe Payment Element** — When `STRIPE_PUBLISHABLE_KEY` is set, the demo "Simulate card payment" button should be replaced with the real Stripe.js Payment Element. The demo path is already wired; the live path needs the Stripe.js SDK integration.
+

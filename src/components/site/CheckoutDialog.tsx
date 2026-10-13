@@ -447,6 +447,7 @@ export function CheckoutDialog() {
         notes: notes.trim() || undefined,
         buyNow: !!buyNowItem,
         couponCode: appliedCoupon?.code || undefined,
+        giftCardCode: appliedGiftCard?.code || undefined,
       };
       if (hasPrint) body.shippingAddress = ship;
 

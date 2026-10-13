@@ -5,6 +5,7 @@ import {
   Users, Mail, Download, LogOut, RefreshCw, Lock, ShieldCheck, FileDown,
   ShoppingBag, DollarSign, BookOpen, Package, TrendingUp,
 } from "lucide-react";
+import { RevenueChart } from "@/components/admin/RevenueChart";
 
 type Subscriber = { email: string; source: string; createdAt: string };
 type ContactMessage = { email: string; message: string; createdAt: string };
@@ -256,6 +257,11 @@ export default function AdminPage() {
             value={`$${data?.stats.orders ? (data.stats.revenueCents / 100 / data.stats.orders).toFixed(2) : "0.00"}`}
             label="Avg Order Value"
           />
+        </div>
+
+        {/* Revenue chart */}
+        <div className="mb-8">
+          <RevenueChart orders={data?.orders ?? []} />
         </div>
 
         {/* Tabs */}

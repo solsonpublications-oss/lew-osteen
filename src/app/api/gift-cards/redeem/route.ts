@@ -63,7 +63,7 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    const result = redeemGiftCard({ code, orderTotalCents, redeemedBy });
+    const result = await redeemGiftCard({ code, orderTotalCents, redeemedBy });
     if (!result.ok) {
       return NextResponse.json({ ok: false, error: result.error }, { status: 400 });
     }

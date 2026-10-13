@@ -122,3 +122,22 @@ model EbookDownloadToken {
   consumedAt DateTime?
   createdAt DateTime @default(now())
 }
+
+// ============================================================
+// Gift Cards — issued when a buyer purchases a gift card line item.
+// Persisted so gift card balances survive server restarts.
+// ============================================================
+model GiftCard {
+  id            String   @id @default(cuid())
+  code          String   @unique
+  amountCents   Int
+  balanceCents  Int
+  issuedAt      DateTime @default(now())
+  issuedTo      String
+  redeemedBy    String?
+  redeemedAt    DateTime?
+  orderId       String?
+  notes         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}

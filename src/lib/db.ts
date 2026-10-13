@@ -18,7 +18,8 @@ const hasModels =
   typeof cached.contactMessage === 'object' &&
   typeof cached.order === 'object' &&
   typeof cached.orderItem === 'object' &&
-  typeof cached.ebookDownloadToken === 'object';
+  typeof cached.ebookDownloadToken === 'object' &&
+  typeof cached.giftCard === 'object';
 
 export const db =
   (hasModels ? cached : new PrismaClient({ log: ['query'] })) as PrismaClient;

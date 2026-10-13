@@ -2,6 +2,7 @@ import "server-only";
 
 import { randomBytes } from "crypto";
 import { GIFT_CARD_AMOUNTS } from "./gift-card-config";
+import { db } from "@/lib/db";
 
 // Re-export for backwards compatibility (server-only callers).
 export { GIFT_CARD_AMOUNTS };
@@ -9,14 +10,9 @@ export { GIFT_CARD_AMOUNTS };
 // ============================================================
 // Gift Cards — server-side issued gift card codes.
 //
-// A visitor "purchases" a gift card from the GiftCardsSection
-// (it's added to the cart as a special line item; on order
-// completion the server issues a code). The recipient redeems
-// the code at checkout, applying it as a fixed-amount coupon.
-//
-// For this demo build, issued gift cards live in an in-memory
-// Map (cleared on server restart). For production, persist
-// to the Prisma `GiftCard` model (TODO: add to schema).
+// Gift cards are persisted to the Prisma `GiftCard` model so
+// balances survive server restarts. The in-memory Map is used
+// as a write-through cache for fast lookups.
 // ============================================================
 
 export type GiftCard = {
@@ -43,12 +39,13 @@ export function generateGiftCardCode(): string {
   return `LO-GC-${rand(4)}-${rand(4)}`;
 }
 
-/** Issue a new gift card. */
-export function issueGiftCard(args: {
+/** Issue a new gift card. Persists to Prisma + caches in-memory. */
+export async function issueGiftCard(args: {
   amountCents: number;
   issuedTo: string;
   notes?: string;
-}): GiftCard {
+  orderId?: string;
+}): Promise<GiftCard> {
   let code = generateGiftCardCode();
   // Avoid (very unlikely) collisions.
   while (giftCards.has(code)) code = generateGiftCardCode();
@@ -60,7 +57,23 @@ export function issueGiftCard(args: {
     issuedTo: args.issuedTo,
     notes: args.notes,
   };
+  // Cache in-memory.
   giftCards.set(code, card);
+  // Persist to Prisma (best-effort; falls back to in-memory if DB fails).
+  try {
+    await db.giftCard.create({
+      data: {
+        code,
+        amountCents: args.amountCents,
+        balanceCents: args.amountCents,
+        issuedTo: args.issuedTo,
+        orderId: args.orderId || null,
+        notes: args.notes || null,
+      },
+    });
+  } catch (err) {
+    console.error("[gift-cards] DB persist failed, keeping in-memory only:", err);
+  }
   return card;
 }
 
@@ -72,14 +85,34 @@ export type RedeemResult =
  * Redeem a gift card against an order total.
  * Deducts from the card's balance and marks it as redeemed if fully used.
  * Returns the amount actually redeemed (capped at the card's balance + the order total).
+ * Syncs the balance to Prisma.
  */
-export function redeemGiftCard(args: {
+export async function redeemGiftCard(args: {
   code: string;
   orderTotalCents: number;
   redeemedBy: string;
-}): RedeemResult {
+}): Promise<RedeemResult> {
   const code = args.code.trim().toUpperCase();
-  const card = giftCards.get(code);
+  let card = giftCards.get(code);
+  // If not in cache, try loading from Prisma.
+  if (!card) {
+    try {
+      const row = await db.giftCard.findUnique({ where: { code } });
+      if (row) {
+        card = {
+          code: row.code,
+          amountCents: row.amountCents,
+          balanceCents: row.balanceCents,
+          issuedAt: row.issuedAt.getTime(),
+          issuedTo: row.issuedTo,
+          notes: row.notes || undefined,
+        };
+        giftCards.set(code, card);
+      }
+    } catch (err) {
+      console.error("[gift-cards] DB lookup failed:", err);
+    }
+  }
   if (!card) {
     return { ok: false, error: "Unknown gift card code." };
   }
@@ -90,6 +123,19 @@ export function redeemGiftCard(args: {
   card.balanceCents -= redeemedCents;
   card.redeemedBy = args.redeemedBy;
   card.redeemedAt = Date.now();
+  // Sync the balance to Prisma (best-effort).
+  try {
+    await db.giftCard.update({
+      where: { code },
+      data: {
+        balanceCents: card.balanceCents,
+        redeemedBy: args.redeemedBy,
+        redeemedAt: new Date(card.redeemedAt),
+      },
+    });
+  } catch (err) {
+    console.error("[gift-cards] DB update failed, keeping in-memory only:", err);
+  }
   return {
     ok: true,
     card,
