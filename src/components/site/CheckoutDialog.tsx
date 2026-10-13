@@ -28,6 +28,7 @@ import {
   Check,
   Tag,
   X,
+  Wallet,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useCart, formatUSD, type CartItem } from "@/lib/cart-store";
@@ -203,6 +204,75 @@ export function CheckoutDialog() {
     setCouponError(null);
   };
 
+  // Gift card state
+  const [giftCardCode, setGiftCardCode] = useState("");
+  const [appliedGiftCard, setAppliedGiftCard] = useState<null | {
+    code: string;
+    redeemedCents: number;
+    remainingCents: number;
+    newTotalCents: number;
+  }>(null);
+  const [giftCardStatus, setGiftCardStatus] = useState<"idle" | "loading" | "error">("idle");
+  const [giftCardError, setGiftCardError] = useState<string | null>(null);
+
+  const applyGiftCard = async () => {
+    const code = giftCardCode.trim();
+    if (!code) {
+      setGiftCardStatus("error");
+      setGiftCardError("Please enter a gift card code.");
+      return;
+    }
+    // Compute the current total (subtotal - coupon discount)
+    const currentTotal = appliedCoupon
+      ? appliedCoupon.newTotalCents
+      : Math.round(subtotal * 100);
+    if (currentTotal <= 0) {
+      setGiftCardStatus("error");
+      setGiftCardError("Your order is already $0.00 — no need to apply a gift card.");
+      return;
+    }
+    setGiftCardStatus("loading");
+    setGiftCardError(null);
+    try {
+      const res = await fetch("/api/gift-cards/redeem", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          code,
+          orderTotalCents: currentTotal,
+          redeemedBy: email.trim().toLowerCase() || "unknown@example.com",
+        }),
+      });
+      const data = await res.json();
+      if (!data.ok) {
+        setGiftCardStatus("error");
+        setGiftCardError(data.error || "Invalid gift card.");
+        setAppliedGiftCard(null);
+        return;
+      }
+      setAppliedGiftCard({
+        code: data.code,
+        redeemedCents: data.redeemedCents,
+        remainingCents: data.remainingCents,
+        newTotalCents: data.newTotalCents,
+      });
+      setGiftCardStatus("idle");
+      toast.success(`Gift card ${data.code} applied`, {
+        description: `Redeemed $${data.redeemedUSD} · $${data.remainingUSD} remaining on the card.`,
+      });
+    } catch (e: any) {
+      setGiftCardStatus("error");
+      setGiftCardError(e?.message || "Could not redeem gift card.");
+    }
+  };
+
+  const removeGiftCard = () => {
+    setAppliedGiftCard(null);
+    setGiftCardCode("");
+    setGiftCardStatus("idle");
+    setGiftCardError(null);
+  };
+
   // Confirmation
   const [confirmation, setConfirmation] = useState<OrderConfirmation | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -223,6 +293,11 @@ export function CheckoutDialog() {
         setAppliedCoupon(null);
         setCouponStatus("idle");
         setCouponError(null);
+        // Reset gift card state too.
+        setGiftCardCode("");
+        setAppliedGiftCard(null);
+        setGiftCardStatus("idle");
+        setGiftCardError(null);
       }, 250);
       return () => clearTimeout(t);
     }
@@ -511,6 +586,12 @@ export function CheckoutDialog() {
               couponError={couponError}
               onApplyCoupon={applyCoupon}
               onRemoveCoupon={removeCoupon}
+              giftCardCode={giftCardCode} setGiftCardCode={setGiftCardCode}
+              appliedGiftCard={appliedGiftCard}
+              giftCardStatus={giftCardStatus}
+              giftCardError={giftCardError}
+              onApplyGiftCard={applyGiftCard}
+              onRemoveGiftCard={removeGiftCard}
             />
           )}
 
@@ -534,6 +615,7 @@ export function CheckoutDialog() {
               subtotal={subtotal}
               email={email}
               coupon={appliedCoupon}
+              giftCard={appliedGiftCard}
             />
           )}
 
@@ -613,6 +695,18 @@ function InfoStep(props: {
   couponError: string | null;
   onApplyCoupon: () => void;
   onRemoveCoupon: () => void;
+  // gift card
+  giftCardCode: string; setGiftCardCode: (v: string) => void;
+  appliedGiftCard: {
+    code: string;
+    redeemedCents: number;
+    remainingCents: number;
+    newTotalCents: number;
+  } | null;
+  giftCardStatus: "idle" | "loading" | "error";
+  giftCardError: string | null;
+  onApplyGiftCard: () => void;
+  onRemoveGiftCard: () => void;
 }) {
   const {
     email, setEmail, name, setName, phone, setPhone,
@@ -620,12 +714,14 @@ function InfoStep(props: {
     items, subtotal, itemCount, onNext,
     couponCode, setCouponCode, appliedCoupon, couponStatus, couponError,
     onApplyCoupon, onRemoveCoupon,
+    giftCardCode, setGiftCardCode, appliedGiftCard, giftCardStatus, giftCardError,
+    onApplyGiftCard, onRemoveGiftCard,
   } = props;
 
   return (
     <div className="space-y-6">
       {/* Order summary (compact) */}
-      <OrderSummary items={items} subtotal={subtotal} itemCount={itemCount} coupon={appliedCoupon} />
+      <OrderSummary items={items} subtotal={subtotal} itemCount={itemCount} coupon={appliedCoupon} giftCard={appliedGiftCard} />
 
       {/* Contact */}
       <section>
@@ -768,6 +864,72 @@ function InfoStep(props: {
         </p>
       </section>
 
+      {/* Gift card code */}
+      <section>
+        <SectionLabel icon={Wallet}>Gift card</SectionLabel>
+        {appliedGiftCard ? (
+          <div className="mt-3 rounded-sm border border-gold/50 bg-gold/10 p-3 flex items-center justify-between gap-3 coupon-flash">
+            <div className="flex items-center gap-2 min-w-0">
+              <CheckCircle2 className="h-4 w-4 text-gold-bright flex-shrink-0" />
+              <div className="min-w-0">
+                <div className="font-ui text-[0.7rem] uppercase tracking-widest-2 text-gold-bright">
+                  {appliedGiftCard.code} applied
+                </div>
+                <div className="font-body text-[0.7rem] text-cream/80 italic">
+                  Redeemed ${formatUSD(appliedGiftCard.redeemedCents / 100)} · ${formatUSD(appliedGiftCard.remainingCents / 100)} remaining on card
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 flex-shrink-0">
+              <span className="font-heading text-gold-bright text-sm">
+                −{formatUSD(appliedGiftCard.redeemedCents / 100)}
+              </span>
+              <button
+                onClick={onRemoveGiftCard}
+                aria-label="Remove gift card"
+                className="text-muted-warm hover:text-ember transition-colors"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="mt-3 flex gap-2">
+            <input
+              value={giftCardCode}
+              onChange={(e) => {
+                setGiftCardCode(e.target.value.toUpperCase());
+                if (giftCardStatus === "error") setGiftCardStatus("idle");
+              }}
+              placeholder="LO-GC-XXXX-XXXX"
+              className="flex-1 bg-deep/80 border border-gold-soft rounded-sm px-3 py-2.5 font-ui tracking-widest uppercase text-cream placeholder:text-muted-warm/60 focus:border-gold focus:ring-1 focus:ring-gold/40 text-sm"
+              aria-label="Gift card code"
+            />
+            <Button
+              variant="outline"
+              onClick={onApplyGiftCard}
+              disabled={giftCardStatus === "loading"}
+              className="btn-outline-gold border border-gold/60 text-gold hover:text-gold-bright flex-shrink-0 inline-flex items-center gap-1.5"
+            >
+              {giftCardStatus === "loading" ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Wallet className="h-3.5 w-3.5" />
+              )}
+              Apply
+            </Button>
+          </div>
+        )}
+        {giftCardStatus === "error" && giftCardError && (
+          <p className="text-[0.72rem] text-ember font-ui mt-1.5">{giftCardError}</p>
+        )}
+        <p className="font-body text-[0.68rem] text-muted-warm italic mt-2">
+          Have a gift card? Enter the code above to apply its balance. Try{" "}
+          <button onClick={() => setGiftCardCode("LO-GC-DEMO-TEST")} className="text-gold-bright underline underline-offset-2 hover:text-gold">LO-GC-DEMO-TEST</button>{" "}
+          for a demo $25 card.
+        </p>
+      </section>
+
       {error && (
         <p className="text-[0.78rem] text-ember font-ui">{error}</p>
       )}
@@ -805,19 +967,28 @@ function PaymentStep(props: {
     discountCents: number;
     newTotalCents: number;
   } | null;
+  giftCard?: {
+    code: string;
+    redeemedCents: number;
+    remainingCents: number;
+    newTotalCents: number;
+  } | null;
 }) {
   const {
     method, onChooseStripe, onChoosePaypal, creatingIntent,
     stripeIntent, paypalOrder, onStripePayDemo, onPaypalPayDemo, onBack, error,
-    items, subtotal, coupon,
+    items, subtotal, coupon, giftCard,
   } = props;
 
-  // The amount the buyer will actually pay — after any applied coupon.
-  const effectiveTotal = coupon ? coupon.newTotalCents / 100 : subtotal;
+  // The amount the buyer will actually pay — after any applied coupon + gift card.
+  const couponTotal = coupon ? coupon.newTotalCents : Math.round(subtotal * 100);
+  const giftCardReduction = giftCard ? giftCard.redeemedCents : 0;
+  const effectiveTotalCents = Math.max(0, couponTotal - giftCardReduction);
+  const effectiveTotal = effectiveTotalCents / 100;
 
   return (
     <div className="space-y-6">
-      <OrderSummary items={items} subtotal={subtotal} itemCount={items.reduce((n, i) => n + i.qty, 0)} coupon={coupon} />
+      <OrderSummary items={items} subtotal={subtotal} itemCount={items.reduce((n, i) => n + i.qty, 0)} coupon={coupon} giftCard={giftCard} />
 
       <section>
         <SectionLabel icon={CreditCard}>Choose payment method</SectionLabel>
@@ -1151,6 +1322,7 @@ function OrderSummary({
   subtotal,
   itemCount,
   coupon,
+  giftCard,
 }: {
   items: CartItem[];
   subtotal: number;
@@ -1161,9 +1333,19 @@ function OrderSummary({
     discountCents: number;
     newTotalCents: number;
   } | null;
+  giftCard?: {
+    code: string;
+    redeemedCents: number;
+    remainingCents: number;
+    newTotalCents: number;
+  } | null;
 }) {
   const discountUSD = coupon ? coupon.discountCents / 100 : 0;
-  const totalUSD = coupon ? coupon.newTotalCents / 100 : subtotal;
+  const couponTotal = coupon ? coupon.newTotalCents : Math.round(subtotal * 100);
+  const giftCardReduction = giftCard ? giftCard.redeemedCents : 0;
+  const giftCardUSD = giftCardReduction / 100;
+  const totalCents = Math.max(0, couponTotal - giftCardReduction);
+  const totalUSD = totalCents / 100;
   return (
     <div className="rounded-sm border border-gold-soft/40 bg-deep/40 p-4">
       <div className="flex items-center justify-between mb-3">
@@ -1211,6 +1393,19 @@ function OrderSummary({
           <p className="font-body text-[0.6rem] text-muted-warm italic mt-0.5 text-right">
             {coupon.description}
           </p>
+        </>
+      )}
+      {giftCard && (
+        <div className="flex items-center justify-between mt-2">
+          <span className="font-ui text-[0.6rem] uppercase tracking-widest-2 text-gold-bright flex items-center gap-1.5">
+            <span className="inline-block h-1.5 w-1.5 rounded-full bg-gold-bright" />
+            Gift card {giftCard.code}
+          </span>
+          <span className="font-heading text-gold-bright text-base">−{formatUSD(giftCardUSD)}</span>
+        </div>
+      )}
+      {(coupon || giftCard) && (
+        <>
           <Separator className="my-2 bg-gold-soft/30" />
           <div className="flex items-center justify-between">
             <span className="font-ui text-[0.66rem] uppercase tracking-widest-2 text-cream">

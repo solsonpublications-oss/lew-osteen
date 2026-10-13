@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 
 // ============================================================
 // useCountUp — animates a number from 0 to `target` when the
@@ -22,9 +22,30 @@ export function useCountUp(target: number, opts?: {
   const [value, setValue] = useState(0);
   const startedRef = useRef(false);
 
+  const start = useCallback(() => {
+    const startTime = performance.now();
+    const animate = (now: number) => {
+      const elapsed = now - startTime;
+      const progress = Math.min(1, elapsed / duration);
+      // Ease-out cubic
+      const eased = 1 - Math.pow(1 - progress, 3);
+      const current = target * eased;
+      setValue(
+        decimals > 0
+          ? Math.round(current * Math.pow(10, decimals)) / Math.pow(10, decimals)
+          : Math.floor(current)
+      );
+      if (progress < 1) {
+        requestAnimationFrame(animate);
+      } else {
+        setValue(target);
+      }
+    };
+    requestAnimationFrame(animate);
+  }, [target, duration, decimals]);
+
   useEffect(() => {
     if (!startOnView) {
-      // Start immediately
       start();
       return;
     }
@@ -41,25 +62,7 @@ export function useCountUp(target: number, opts?: {
     );
     observer.observe(el);
     return () => observer.disconnect();
-  }, [startOnView]);
-
-  function start() {
-    const startTime = performance.now();
-    const animate = (now: number) => {
-      const elapsed = now - startTime;
-      const progress = Math.min(1, elapsed / duration);
-      // Ease-out cubic
-      const eased = 1 - Math.pow(1 - progress, 3);
-      const current = target * eased;
-      setValue(decimals > 0 ? Math.round(current * Math.pow(10, decimals)) / Math.pow(10, decimals) : Math.floor(current));
-      if (progress < 1) {
-        requestAnimationFrame(animate);
-      } else {
-        setValue(target);
-      }
-    };
-    requestAnimationFrame(animate);
-  }
+  }, [startOnView, start]);
 
   return { ref, value };
 }

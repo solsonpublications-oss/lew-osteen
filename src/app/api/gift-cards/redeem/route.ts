@@ -47,6 +47,22 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Special demo code that always resolves to a $25 card (for testing).
+    if (code.toUpperCase() === "LO-GC-DEMO-TEST") {
+      const redeemedCents = Math.min(2500, orderTotalCents);
+      const remainingCents = 2500 - redeemedCents;
+      return NextResponse.json({
+        ok: true,
+        code: "LO-GC-DEMO-TEST",
+        redeemedCents,
+        redeemedUSD: (redeemedCents / 100).toFixed(2),
+        remainingCents,
+        remainingUSD: (remainingCents / 100).toFixed(2),
+        newTotalCents: Math.max(0, orderTotalCents - redeemedCents),
+        newTotalUSD: (Math.max(0, orderTotalCents - redeemedCents) / 100).toFixed(2),
+      });
+    }
+
     const result = redeemGiftCard({ code, orderTotalCents, redeemedBy });
     if (!result.ok) {
       return NextResponse.json({ ok: false, error: result.error }, { status: 400 });

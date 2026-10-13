@@ -436,3 +436,104 @@ Stage Summary:
 - **Bug fixed**: `gift-cards.ts` server-only import was leaking into client — split constants into isomorphic `gift-card-config.ts`.
 - The original site (Hero, About, Coming Soon, Bookshelf, Footer) remains 100% intact — every change is additive.
 - Ready for the next round: lazy-load heavy sections to fix OOM, wire gift card redemption into the checkout flow (apply gift card balance at payment), add gift card issuance to the orders route (when a gift card is purchased, issue a code + email it).
+
+---
+Task ID: 14-15 (web dev review cron — rounds 5-6)
+Agent: main (Z.ai Code)
+Task: Fix lint errors from incomplete round 5 + complete gift card redemption UI in checkout + verify OOM fix + test gift card purchase/redeem flow.
+
+## Current Project Status Assessment
+
+The Lew Osteen author website is a fully-featured ecommerce-enabled single-page Next.js 16 application. The original site (Hero, About, Coming Soon, Bookshelf, Footer) is 100% intact. Ecommerce + 10+ new sections have been added on top:
+
+### Sections (in page order)
+1. Hero
+2. About Author (with animated count-up stats)
+3. Coming Soon — The Pyramids of Nod (countdown)
+4. Newsletter Stats / Press Strip
+5. Bookshelf (with search, sort, price filter, format selector, buy panel)
+6. Recently Viewed (localStorage)
+7. Reader Bundles (3 bundles with auto-generated coupons)
+8. Gift Cards (purchase + redeem + wallet)
+9. Featured Series (Joshua Trail Trilogy)
+10. Where to Start (genre-based recommendations)
+11. Reading Order Guide (interactive flowchart)
+12. Early Praise
+13. Author Timeline
+14. Events & Appearances (upcoming/past tabs)
+15. Field Notes Blog (6 posts + comments)
+16. FAQ (12 questions)
+17. Footer (contact form, newsletter)
+
+### Ecommerce features
+- Cart (localStorage, no login)
+- Format picker (eBook/Paperback/Hardcover)
+- Checkout with Stripe + PayPal (demo mode by default)
+- Coupon codes (WELCOME10, NOD15, EBOOK5, READER25 + auto-generated bundle coupons)
+- Gift cards (purchase, redeem at checkout, wallet)
+- SMTP email delivery (eBooks + author/buyer notifications)
+- Lulu print-on-demand submission
+- Order History (localStorage)
+- Wishlist/Favorites (heart icon + dialog)
+- Read Excerpt viewer (8 sample chapters)
+- Book Reviews (5-star ratings + written reviews)
+- 3D book cover tilt (mouse-tracking)
+- Admin dashboard at /admin (orders, revenue, subscribers, downloads)
+
+### Known Issues
+- **Dev server OOM**: The 4GB container + Turbopack + the large page causes OOM kills during compilation. Mitigated with `NODE_OPTIONS="--max-old-space-size=1024"` + lazy-loading 14 sections with `next/dynamic`. The dev server compiles + serves requests successfully but can die under sustained load (multiple compilations or Chrome competing for memory). This is an infrastructure constraint, not a code bug.
+
+---
+
+## Work Log
+
+### Bug fixes
+1. **`useCountUp.ts` lint error** — the `start` function was called in `useEffect` before it was declared (temporal dead zone). Fixed by converting `start` to a `useCallback` declared before the `useEffect` that calls it.
+2. **`AboutAuthor.tsx` missing `StatChip` component** — the previous round started refactoring the stats to use animated count-up but the `StatChip` component was never added. Fixed by adding the full `StatChip` component that uses `useCountUp` to animate the number from 0 to target when it enters the viewport.
+3. **Gift card redeem endpoint didn't handle demo code** — `LO-GC-DEMO-TEST` was handled by the lookup endpoint but not the redeem endpoint. Fixed by adding a special case for the demo code in the redeem route.
+
+### Feature: Gift card redemption in checkout UI
+- Added gift card state to `CheckoutDialog.tsx`: `giftCardCode`, `appliedGiftCard`, `giftCardStatus`, `giftCardError`.
+- Added `applyGiftCard()` function that calls `POST /api/gift-cards/redeem` with the current order total (after any coupon discount) + the buyer's email. The response includes the redeemed amount, remaining balance, and new total.
+- Added `removeGiftCard()` function to clear the applied gift card.
+- Added gift card state reset to the dialog-close effect.
+- Added gift card props to `InfoStep` (10 new props: code, setCode, appliedGiftCard, status, error, onApply, onRemove).
+- Added a "Gift card" section in the InfoStep UI (after the promo code section):
+  - When no gift card is applied: input field (uppercase, monospace-style) + "Apply" button with Wallet icon. Hint text with a quick-fill chip for `LO-GC-DEMO-TEST`.
+  - When a gift card is applied: a gold-bordered card showing the code, redeemed amount, remaining balance, and a remove (X) button.
+- Updated the `PaymentStep` to account for the gift card reduction:
+  - Added `giftCard` prop to the PaymentStep signature.
+  - The `effectiveTotal` now computes as `max(0, couponTotal - giftCardReduction)` so the payment buttons show the correct amount after both coupon + gift card.
+- Updated the `OrderSummary` component to show the gift card discount:
+  - Added `giftCard` prop.
+  - The total now computes as `max(0, couponTotal - giftCardReduction)`.
+  - When a gift card is applied, shows a "Gift card {code}" line with the redeemed amount, followed by the final Total.
+- Updated all `OrderSummary` calls to pass the `giftCard` prop.
+
+### Verification
+- `bun run lint` passes with 0 errors and 0 warnings.
+- API tests (when dev server is briefly available):
+  - Gift card lookup: `LO-GC-DEMO-TEST` → $25.00 balance ✓
+  - Gift card redeem ($9.99 order): redeemed $9.99, remaining $15.01, new total $0.00 ✓
+  - Gift card redeem ($50.00 order): redeemed $25.00 (card max), remaining $0.00, new total $25.00 ✓
+  - Gift card purchase: order created with `bookTitle: "Gift Card — $25.00"`, code issued + emailed ✓
+- Dev server OOM: the lazy-loading fix (14 `next/dynamic` imports) improved stability from 1-2 requests to 3-5 requests before OOM. The dev server compiles + serves requests successfully when available.
+
+## Unresolved Issues or Risks
+
+1. **Dev server OOM** — The 4GB container + Turbopack + the large page (17+ sections, 1400+ line CheckoutDialog) causes OOM kills. The lazy-loading fix helped but didn't fully resolve it. **Recommendation**: For production, split the page into separate routes (/books, /events, /blog, etc.) or upgrade the container to 8GB. The code is correct — this is purely an infrastructure constraint.
+
+2. **Gift card in-memory store** — Issued gift cards live in an in-memory `Map` that clears on server restart. **Recommendation**: Add a `GiftCard` model to the Prisma schema for production persistence.
+
+3. **Gift card redemption in order submission** — The checkout UI applies the gift card (calls `/api/gift-cards/redeem`) but the final `POST /api/orders` doesn't yet pass the gift card code. The server-side `redeemGiftCard` is called by the redeem endpoint, but if the buyer changes their cart after applying the gift card, the redeemed amount might not match. **Recommendation**: Pass `giftCardCode` in the order submission + have the orders route re-validate + re-redeem the gift card server-side.
+
+4. **Reviews + blog comments are localStorage-only** — They don't persist across devices or browsers. **Recommendation**: Migrate to Prisma models for multi-user persistence.
+
+## Priority Recommendations for Next Phase
+
+1. **Fix dev server OOM** — Split the page into separate routes or upgrade container memory.
+2. **Persist gift cards to Prisma** — Add `GiftCard` model to schema.
+3. **Wire gift card code into order submission** — Pass `giftCardCode` to `POST /api/orders` + re-validate server-side.
+4. **Migrate reviews + comments to Prisma** — For multi-user persistence.
+5. **Live Stripe Payment Element** — When `STRIPE_PUBLISHABLE_KEY` is set, mount the real Stripe.js Payment Element instead of the demo button.
+6. **Admin analytics charts** — Add revenue-over-time + order-count charts to the admin dashboard using Recharts.
