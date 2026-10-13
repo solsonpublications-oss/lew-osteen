@@ -10,7 +10,6 @@ import {
   DialogClose,
 } from "@/components/ui/dialog";
 import {
-  ExternalLink,
   BookOpen,
   Calendar,
   Tag,
@@ -391,16 +390,6 @@ export function BookDetailModal({ book, open, onOpenChange }: BookDetailModalPro
                 />
                 {isWishlisted ? "Saved" : "Save"}
               </button>
-
-              <a
-                href={book.amazonUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="btn-outline-gold inline-flex items-center justify-center gap-2 text-[0.66rem] py-2.5 px-4"
-              >
-                Also on Amazon
-                <ExternalLink className="h-3.5 w-3.5" />
-              </a>
 
               {/* Share menu (per-book OG image) */}
               <div className="relative" ref={shareRef}>

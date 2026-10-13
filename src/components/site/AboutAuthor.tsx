@@ -88,25 +88,21 @@ export function AboutAuthor() {
               ))}
             </div>
 
-            {/* Amazon buttons: Author About page + All Books page */}
+            {/* Action buttons */}
             <div className="mt-8 flex flex-col sm:flex-row gap-3">
               <a
-                href="https://www.amazon.com/stores/author/B073YGNKC3/about?_encoding=UTF8&ref_=aufs_ap_ahdr_dsk_aa&pd_rd_w=StdWR&content-id=amzn1.sym.7e190e19-9f6f-4df8-807a-5a7608594741&pf_rd_p=7e190e19-9f6f-4df8-807a-5a7608594741&pf_rd_r=131-8533357-0552420&pd_rd_wg=YBTh1&pd_rd_r=3cbbaffd-6ffd-49d3-9d0c-fb76ffb9429d"
-                target="_blank"
-                rel="noopener noreferrer"
+                href="/#books"
                 className="btn-gold inline-flex items-center gap-2"
-              >
-                View Author Page on Amazon
-                <span aria-hidden="true">↗</span>
-              </a>
-              <a
-                href="https://www.amazon.com/stores/author/B073YGNKC3/allbooks?_encoding=UTF8&ref_=aufs_ap_ahdr_dsk_ab&pd_rd_w=qW2Vk&content-id=amzn1.sym.7e190e19-9f6f-4df8-807a-5a7608594741&pf_rd_p=7e190e19-9f6f-4df8-807a-5a7608594741&pf_rd_r=131-8533357-0552420&pd_rd_wg=9kJvQ&pd_rd_r=d169e06b-1e29-4c14-87c2-a10dd89ca698"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="btn-outline-gold inline-flex items-center gap-2"
               >
                 <BookMarked className="h-4 w-4" />
                 Browse the Bookshelf
+              </a>
+              <a
+                href="/#gift-cards"
+                className="btn-outline-gold inline-flex items-center gap-2"
+              >
+                <Award className="h-4 w-4" />
+                Gift Cards
               </a>
             </div>
           </RevealOnScroll>

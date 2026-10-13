@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { books, AUTHOR_AMAZON_URL } from "@/data/books";
+import { books } from "@/data/books";
 import { BookCover } from "@/components/site/BookCover";
-import { ArrowLeft, ExternalLink, BookOpen, Calendar, Tag, Home } from "lucide-react";
+import { ArrowLeft, BookOpen, Calendar, Tag, Home } from "lucide-react";
+import { BookProductClient } from "@/components/site/BookProductClient";
 
 // Pre-render a page per book at build time.
 export function generateStaticParams() {
@@ -123,7 +124,7 @@ export default async function BookPage({
               </div>
             </div>
 
-            {/* RIGHT: details */}
+            {/* RIGHT: details + buy panel */}
             <div>
               <div className="flex flex-wrap items-center gap-2 mb-4">
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gold/10 border border-gold/40 text-gold font-ui text-[0.58rem] uppercase tracking-widest-2">
@@ -155,28 +156,8 @@ export default async function BookPage({
                 </p>
               </div>
 
-              <div className="flex flex-col sm:flex-row gap-3">
-                <a
-                  href={book.amazonUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="btn-gold inline-flex items-center justify-center gap-2"
-                >
-                  View on Amazon
-                  <ExternalLink className="h-4 w-4" />
-                </a>
-                <Link
-                  href={`/#books`}
-                  className="btn-outline-gold inline-flex items-center justify-center gap-2"
-                >
-                  <BookOpen className="h-4 w-4" />
-                  Browse Bookshelf
-                </Link>
-              </div>
-
-              <p className="font-ui text-[0.56rem] uppercase tracking-widest-2 text-muted-warm/50 mt-6">
-                Shareable link · /book/{slug}
-              </p>
+              {/* Buy panel — client component with Add to Cart + Buy Now */}
+              <BookProductClient book={book} />
             </div>
           </div>
 
