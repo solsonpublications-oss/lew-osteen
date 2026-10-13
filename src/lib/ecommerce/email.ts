@@ -468,3 +468,88 @@ export async function sendAuthorLuluConfirmationEmail(args: {
       .join("\n")}`,
   });
 }
+
+// ---------- contact message ----------
+
+export async function sendContactFormEmail(args: {
+  senderEmail: string;
+  message: string;
+}): Promise<SendMailResult> {
+  const body = `
+    ${paragraph(`You have received a new contact message from <a href="mailto:${escapeHtml(args.senderEmail)}" style="color:${GOLD};">${escapeHtml(args.senderEmail)}</a>:`)}
+    <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin:16px 0;background:#171412;border:1px solid ${BORDER};border-radius:6px;">
+      <tr>
+        <td style="padding:16px 20px;font-size:15px;line-height:1.6;color:${CREAM};white-space:pre-wrap;">
+          ${escapeHtml(args.message)}
+        </td>
+      </tr>
+    </table>
+    ${paragraph(`Reply directly to this email to reach <a href="mailto:${escapeHtml(args.senderEmail)}" style="color:${GOLD};">${escapeHtml(args.senderEmail)}</a>.`)}`;
+
+  const html = shell(
+    "New Contact Message",
+    `New message from ${args.senderEmail}`,
+    body
+  );
+
+  return sendMail({
+    to: getAuthorEmail(),
+    subject: `[Contact] Message from ${args.senderEmail} — Lew Osteen`,
+    html,
+    text: `New contact message from ${args.senderEmail}:\n\n${args.message}`,
+  });
+}
+
+// ---------- newsletter subscription notifications ----------
+
+export async function sendSubscriberNotificationEmail(args: {
+  subscriberEmail: string;
+  source: string;
+}): Promise<SendMailResult> {
+  const sourceLabel = args.source === "launch-list" ? "Launch List exit modal" : "Coming Soon notify signup";
+  const body = `
+    ${paragraph(`A new reader has joined your mailing list!`)}
+    <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin:16px 0;background:#171412;border:1px solid ${BORDER};border-radius:6px;">
+      <tr>
+        <td style="padding:16px 20px;font-size:15px;line-height:1.6;color:${CREAM};">
+          <div><strong>Subscriber:</strong> <a href="mailto:${escapeHtml(args.subscriberEmail)}" style="color:${GOLD};">${escapeHtml(args.subscriberEmail)}</a></div>
+          <div style="margin-top:6px;font-size:13px;color:${MUTED};"><strong>Source:</strong> ${escapeHtml(sourceLabel)}</div>
+        </td>
+      </tr>
+    </table>`;
+
+  const html = shell(
+    "New Subscriber Alert",
+    `New subscriber: ${args.subscriberEmail}`,
+    body
+  );
+
+  return sendMail({
+    to: getAuthorEmail(),
+    subject: `[Subscriber] New signup: ${args.subscriberEmail} — Lew Osteen`,
+    html,
+    text: `New subscriber on lewosteen.com: ${args.subscriberEmail} (via ${sourceLabel})`,
+  });
+}
+
+export async function sendSubscriberWelcomeEmail(args: {
+  subscriberEmail: string;
+}): Promise<SendMailResult> {
+  const body = `
+    ${paragraph(`Thank you for subscribing to Lew Osteen's reader community!`)}
+    ${paragraph(`You will be the first to know about upcoming novel releases, including <em>The Pyramids of Nod</em>, exclusive sample excerpts, and book signings.`)}
+    ${paragraph(`In the meantime, feel free to explore the catalog at <a href="https://lewosteen.com" style="color:${GOLD};">lewosteen.com</a>.`)}`;
+
+  const html = shell(
+    "Welcome to the Reader List",
+    "Thank you for subscribing to Lew Osteen's updates.",
+    body
+  );
+
+  return sendMail({
+    to: args.subscriberEmail,
+    subject: `Welcome to Lew Osteen's Reader List`,
+    html,
+    text: `Thank you for subscribing to Lew Osteen's updates! You will receive release announcements, excerpts, and news.`,
+  });
+}

@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { rateLimit, getClientIp, gcRateLimiter } from "@/lib/rate-limit";
+import { sendContactFormEmail } from "@/lib/ecommerce/email";
 
 // POST /api/contact
 // Body: { email: string, message: string }
-// Persists a contact message from the footer form.
-// Rate-limited: 5 requests per IP per 10 minutes (stricter — heavier payload).
+// Sends email directly to the author and optionally logs to database.
+// Rate-limited: 5 requests per IP per 10 minutes.
 const POST_LIMIT = 5;
 const POST_WINDOW = 10 * 60 * 1000;
 
@@ -51,9 +52,17 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    await db.contactMessage.create({
-      data: { email, message },
-    });
+    // Send email to author
+    await sendContactFormEmail({ senderEmail: email, message });
+
+    // Persist to database if available (non-blocking fallback)
+    try {
+      await db.contactMessage.create({
+        data: { email, message },
+      });
+    } catch (dbErr) {
+      console.warn("[/api/contact] DB persist skipped:", dbErr);
+    }
 
     return NextResponse.json({ ok: true });
   } catch (err) {
