@@ -20,6 +20,7 @@ import {
   sendAuthorLuluConfirmationEmail,
   type ShippingAddress,
   type EmailItem,
+  type EbookEmailItem,
 } from "@/lib/ecommerce/email";
 import { submitPrintOrderToLulu, type LuluItem } from "@/lib/ecommerce/lulu";
 
@@ -283,7 +284,7 @@ export async function POST(req: NextRequest) {
     if (hasDigital) {
       const ebookItems = items.filter((i) => i.format === "ebook");
       const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-      const ebookEmailItems: Array<{ bookTitle: string; format: string; downloadUrl: string }> = [];
+      const ebookEmailItems: EbookEmailItem[] = [];
 
       for (const it of ebookItems) {
         const token = generateToken(32);

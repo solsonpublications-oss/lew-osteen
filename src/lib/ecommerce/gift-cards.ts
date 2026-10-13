@@ -155,20 +155,16 @@ export function lookupGiftCard(code: string): GiftCard | undefined {
 // on first import in dev mode only.
 // ============================================================
 let demoSeeded = false;
-export function seedDemoGiftCards(): void {
+export async function seedDemoGiftCards(): Promise<void> {
   if (demoSeeded) return;
   demoSeeded = true;
   const demoCards: Array<{ amountCents: number; issuedTo: string; notes?: string }> = [
     { amountCents: 2500, issuedTo: "demo@lewosteen.com", notes: "Demo gift card for testing" },
     { amountCents: 1000, issuedTo: "demo@lewosteen.com", notes: "Demo gift card for testing" },
   ];
-  for (const c of demoCards) {
-    issueGiftCard(c);
-  }
-  // Log the demo codes so they're visible in the dev console.
   console.log("[GiftCards:DEMO] Seeded demo gift cards:");
   for (const c of demoCards) {
-    const card = issueGiftCard(c);
+    const card = await issueGiftCard(c);
     console.log(`  ${card.code} — $${(card.amountCents / 100).toFixed(2)}`);
   }
 }

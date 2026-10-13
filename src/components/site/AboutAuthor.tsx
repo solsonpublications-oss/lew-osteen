@@ -125,7 +125,7 @@ function StatChip({
   label: string;
   sub: string;
 }) {
-  const { ref, value: count } = useCountUp(value, { duration: 1500 });
+  const { ref, value: count } = useCountUp<HTMLParagraphElement>(value, { duration: 1500 });
   return (
     <div className="bg-panel/70 border border-gold-soft rounded-sm p-4 text-center hover:border-gold/50 transition-colors group">
       <Icon className="h-5 w-5 mx-auto text-gold mb-2 group-hover:text-gold-bright transition-colors" />

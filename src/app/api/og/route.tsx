@@ -105,7 +105,6 @@ export async function GET(req: Request) {
               fontWeight: 700,
               letterSpacing: 2,
               textTransform: "uppercase",
-              color: goldBright,
               backgroundImage: `linear-gradient(180deg, ${goldBright}, ${gold})`,
               backgroundClip: "text",
               WebkitBackgroundClip: "text",

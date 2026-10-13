@@ -7,18 +7,18 @@ import { useState, useEffect, useRef, useCallback } from "react";
 // element enters the viewport. Returns { ref, value }.
 // ============================================================
 
-export function useCountUp(target: number, opts?: {
+export function useCountUp<T extends HTMLElement = HTMLElement>(target: number, opts?: {
   duration?: number; // ms
   decimals?: number;
   startOnView?: boolean; // default true
 }): {
-  ref: React.RefObject<HTMLSpanElement>;
+  ref: React.RefObject<T | null>;
   value: number;
 } {
   const duration = opts?.duration ?? 1500;
   const decimals = opts?.decimals ?? 0;
   const startOnView = opts?.startOnView ?? true;
-  const ref = useRef<HTMLSpanElement>(null);
+  const ref = useRef<T>(null);
   const [value, setValue] = useState(0);
   const startedRef = useRef(false);
 

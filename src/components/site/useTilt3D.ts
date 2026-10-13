@@ -9,7 +9,7 @@ import { useRef, useState, useCallback } from "react";
 // ============================================================
 
 export type Tilt3DResult = {
-  ref: React.RefObject<HTMLDivElement>;
+  ref: React.RefObject<HTMLDivElement | null>;
   style: React.CSSProperties;
   onMouseMove: (e: React.MouseEvent<HTMLDivElement>) => void;
   onMouseLeave: () => void;

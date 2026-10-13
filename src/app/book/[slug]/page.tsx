@@ -14,12 +14,16 @@ export function generateStaticParams() {
 }
 
 // Per-book metadata: title, description, and per-book OG image.
-export function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Metadata {
-  return params.then((p) => {
-    const book = books.find(
-      (b) =>
-        b.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") === p.slug
-    );
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}): Promise<Metadata> {
+  const p = await params;
+  const book = books.find(
+    (b) =>
+      b.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") === p.slug
+  );
     if (!book) {
       return {
         title: "Book not found | Lew Osteen",
@@ -52,7 +56,6 @@ export function generateMetadata({ params }: { params: Promise<{ slug: string }>
         images: [`${siteUrl}/api/og?book=${encodeURIComponent(book.title)}`],
       },
     };
-  });
 }
 
 export default async function BookPage({

@@ -13,7 +13,7 @@ const WINDOW = 10 * 60 * 1000;
 
 export async function POST(req: NextRequest) {
   try {
-    seedDemoGiftCards();
+    await seedDemoGiftCards();
 
     const ip = getClientIp(req);
     const rl = rateLimit(ip, LIMIT, WINDOW);

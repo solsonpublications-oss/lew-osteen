@@ -36,7 +36,7 @@ export type ValidatedItem = {
   qty: number;
   unitPriceCents: number;
   lineTotalCents: number;
-  coverPath: string;
+  coverPath?: string;
   ebookFile?: string;
   requiresShipping: boolean;
   luluPaperbackId?: string;

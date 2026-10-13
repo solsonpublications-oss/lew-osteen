@@ -584,12 +584,14 @@ export function CheckoutDialog() {
               couponCode={couponCode} setCouponCode={setCouponCode}
               appliedCoupon={appliedCoupon}
               couponStatus={couponStatus}
+              setCouponStatus={setCouponStatus}
               couponError={couponError}
               onApplyCoupon={applyCoupon}
               onRemoveCoupon={removeCoupon}
               giftCardCode={giftCardCode} setGiftCardCode={setGiftCardCode}
               appliedGiftCard={appliedGiftCard}
               giftCardStatus={giftCardStatus}
+              setGiftCardStatus={setGiftCardStatus}
               giftCardError={giftCardError}
               onApplyGiftCard={applyGiftCard}
               onRemoveGiftCard={removeGiftCard}
@@ -693,6 +695,7 @@ function InfoStep(props: {
     newTotalCents: number;
   } | null;
   couponStatus: "idle" | "loading" | "error";
+  setCouponStatus: (v: "idle" | "loading" | "error") => void;
   couponError: string | null;
   onApplyCoupon: () => void;
   onRemoveCoupon: () => void;
@@ -705,6 +708,7 @@ function InfoStep(props: {
     newTotalCents: number;
   } | null;
   giftCardStatus: "idle" | "loading" | "error";
+  setGiftCardStatus: (v: "idle" | "loading" | "error") => void;
   giftCardError: string | null;
   onApplyGiftCard: () => void;
   onRemoveGiftCard: () => void;
@@ -713,9 +717,9 @@ function InfoStep(props: {
     email, setEmail, name, setName, phone, setPhone,
     hasPrint, ship, setShip, notes, setNotes, error,
     items, subtotal, itemCount, onNext,
-    couponCode, setCouponCode, appliedCoupon, couponStatus, couponError,
+    couponCode, setCouponCode, appliedCoupon, couponStatus, setCouponStatus, couponError,
     onApplyCoupon, onRemoveCoupon,
-    giftCardCode, setGiftCardCode, appliedGiftCard, giftCardStatus, giftCardError,
+    giftCardCode, setGiftCardCode, appliedGiftCard, giftCardStatus, setGiftCardStatus, giftCardError,
     onApplyGiftCard, onRemoveGiftCard,
   } = props;
 

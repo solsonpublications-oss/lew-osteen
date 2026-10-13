@@ -10,11 +10,11 @@ import { RevenueChart } from "@/components/admin/RevenueChart";
 type Subscriber = { email: string; source: string; createdAt: string };
 type ContactMessage = { email: string; message: string; createdAt: string };
 type DownloadStat = { slug: string; label: string; count: number };
-type OrderItem = {
+export type OrderItem = {
   bookTitle: string; bookSlug: string; format: string;
   qty: number; unitPriceCents: number; coverPath?: string | null;
 };
-type Order = {
+export type Order = {
   publicId: string; status: string; buyerEmail: string; buyerName: string | null;
   paymentMethod: string; totalCents: number; totalUSD: string; currency: string;
   hasPrint: boolean; hasDigital: boolean; luluStatus: string | null; luluRef: string | null;
