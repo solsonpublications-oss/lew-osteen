@@ -1,31 +1,31 @@
 "use client";
 
-import { useState } from "react";
-import { Star, PenLine, Trash2, Loader2, MessageSquare } from "lucide-react";
-import { useReviews, type Review } from "@/lib/reviews-store";
+import { useState, useEffect, useCallback } from "react";
+import { Star, PenLine, Loader2, MessageSquare } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
 // ============================================================
 // ReviewsSection — shows the aggregate rating + individual
 // reviews for a book, plus a form to add your own.
+// Reviews are now persisted server-side via /api/reviews (Prisma).
 // ============================================================
 
-export function ReviewsSection({ slug, bookTitle }: { slug: string; bookTitle: string }) {
-  const hydrated = useReviews((s) => s.hydrated);
-  const addReview = useReviews((s) => s.addReview);
-  const removeReview = useReviews((s) => s.removeReview);
-  // Use a stable snapshot of reviews for this slug.
-  const allReviews = useReviews((s) => s.reviews);
-  const reviews = allReviews
-    .filter((r) => r.slug === slug)
-    .sort((a, b) => b.createdAt - a.createdAt);
-  const average =
-    reviews.length > 0
-      ? reviews.reduce((s, r) => s + r.rating, 0) / reviews.length
-      : 0;
-  const count = reviews.length;
+type Review = {
+  id: string;
+  bookSlug: string;
+  author: string;
+  rating: number;
+  title: string;
+  body: string;
+  createdAt: string;
+};
 
+export function ReviewsSection({ slug, bookTitle }: { slug: string; bookTitle: string }) {
+  const [reviews, setReviews] = useState<Review[]>([]);
+  const [average, setAverage] = useState(0);
+  const [count, setCount] = useState(0);
+  const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [author, setAuthor] = useState("");
   const [rating, setRating] = useState(5);
@@ -34,9 +34,70 @@ export function ReviewsSection({ slug, bookTitle }: { slug: string; bookTitle: s
   const [body, setBody] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  // Avoid SSR/CSR mismatch — only render after hydration.
-  // hydrated is only true after client-side localStorage rehydration.
-  if (!hydrated) {
+  const fetchReviews = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/reviews?bookSlug=${encodeURIComponent(slug)}`);
+      if (!res.ok) throw new Error("Failed to load");
+      const data = await res.json();
+      if (data.ok) {
+        setReviews(data.reviews);
+        setAverage(data.average);
+        setCount(data.count);
+      }
+    } catch {
+      // Silent fail — reviews just won't load
+    } finally {
+      setLoading(false);
+    }
+  }, [slug]);
+
+  useEffect(() => {
+    fetchReviews();
+  }, [fetchReviews]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!author.trim() || !body.trim() || body.trim().length < 10) {
+      toast.error("Please add your name and a review of at least 10 characters.");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const res = await fetch("/api/reviews", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          bookSlug: slug,
+          author: author.trim(),
+          rating,
+          title: title.trim() || "Review",
+          body: body.trim(),
+        }),
+      });
+      const data = await res.json();
+      if (!data.ok) {
+        toast.error(data.error || "Could not post review.");
+        return;
+      }
+      setAuthor("");
+      setRating(5);
+      setTitle("");
+      setBody("");
+      setShowForm(false);
+      toast.success("Review posted", {
+        description: "Thanks for sharing your thoughts!",
+      });
+      // Refresh the reviews list
+      fetchReviews();
+    } catch {
+      toast.error("Could not post review. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (loading) {
     return (
       <div className="rounded-sm border border-gold-soft/50 bg-deep/40 p-4 mb-5">
         <div className="flex items-center gap-2 mb-2">
@@ -48,33 +109,6 @@ export function ReviewsSection({ slug, bookTitle }: { slug: string; bookTitle: s
       </div>
     );
   }
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!author.trim() || !body.trim() || body.trim().length < 10) {
-      toast.error("Please add your name and a review of at least 10 characters.");
-      return;
-    }
-    setSubmitting(true);
-    setTimeout(() => {
-      addReview({
-        slug,
-        author: author.trim().slice(0, 60),
-        rating,
-        title: title.trim().slice(0, 80) || "Review",
-        body: body.trim().slice(0, 1000),
-      });
-      setAuthor("");
-      setRating(5);
-      setTitle("");
-      setBody("");
-      setShowForm(false);
-      setSubmitting(false);
-      toast.success("Review added", {
-        description: "Thanks for sharing your thoughts!",
-      });
-    }, 350);
-  };
 
   return (
     <div className="rounded-sm border border-gold-soft/50 bg-deep/40 p-4 mb-5">
@@ -209,7 +243,7 @@ export function ReviewsSection({ slug, bookTitle }: { slug: string; bookTitle: s
       ) : (
         <ul className="space-y-3 max-h-[280px] overflow-y-auto pr-1">
           {reviews.map((r) => (
-            <ReviewCard key={r.id} review={r} onDelete={() => removeReview(r.id)} />
+            <ReviewCard key={r.id} review={r} />
           ))}
         </ul>
       )}
@@ -236,7 +270,7 @@ function StarsDisplay({ rating, size = "md" }: { rating: number; size?: "sm" | "
   );
 }
 
-function ReviewCard({ review, onDelete }: { review: Review; onDelete: () => void }) {
+function ReviewCard({ review }: { review: Review }) {
   const date = new Date(review.createdAt);
   return (
     <li className="rounded-sm border border-gold-soft/40 bg-deep/60 p-3 slide-in-up">
@@ -252,13 +286,6 @@ function ReviewCard({ review, onDelete }: { review: Review; onDelete: () => void
             {date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
           </p>
         </div>
-        <button
-          onClick={onDelete}
-          className="text-muted-warm hover:text-ember transition-colors p-1 flex-shrink-0"
-          aria-label="Delete your review"
-        >
-          <Trash2 className="h-3 w-3" />
-        </button>
       </div>
       <p className="font-body text-cream/90 text-[0.78rem] italic mb-1.5">{review.title}</p>
       <p className="font-body text-cream/80 text-[0.82rem] leading-relaxed">{review.body}</p>

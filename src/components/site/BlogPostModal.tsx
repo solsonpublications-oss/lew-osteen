@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   Dialog,
   DialogContent,
@@ -9,11 +9,10 @@ import {
   DialogClose,
 } from "@/components/ui/dialog";
 import {
-  X, Calendar, Clock, Tag, MessageSquare, PenLine, Trash2, Loader2, ArrowLeft,
+  X, Calendar, Clock, Tag, MessageSquare, PenLine, Loader2,
 } from "lucide-react";
 import type { BlogPost } from "@/data/blog";
 import { formatPostDate } from "@/data/blog";
-import { useBlogComments } from "@/lib/blog-comments-store";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -119,44 +118,76 @@ export function BlogPostModal({ post, open, onOpenChange }: Props) {
 }
 
 function CommentsSection({ postSlug }: { postSlug: string }) {
-  const hydrated = useBlogComments((s) => s.hydrated);
-  const addComment = useBlogComments((s) => s.addComment);
-  const removeComment = useBlogComments((s) => s.removeComment);
-  const allComments = useBlogComments((s) => s.comments);
-  const comments = allComments
-    .filter((c) => c.postSlug === postSlug)
-    .sort((a, b) => b.createdAt - a.createdAt);
-  const count = comments.length;
-
+  const [comments, setComments] = useState<Array<{
+    id: string;
+    author: string;
+    body: string;
+    createdAt: string;
+  }>>([]);
+  const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [author, setAuthor] = useState("");
   const [body, setBody] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const count = comments.length;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const fetchComments = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/blog-comments?postSlug=${encodeURIComponent(postSlug)}`);
+      if (!res.ok) throw new Error("Failed to load");
+      const data = await res.json();
+      if (data.ok) {
+        setComments(data.comments);
+      }
+    } catch {
+      // Silent fail
+    } finally {
+      setLoading(false);
+    }
+  }, [postSlug]);
+
+  useEffect(() => {
+    fetchComments();
+  }, [fetchComments]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!author.trim() || !body.trim() || body.trim().length < 3) {
       toast.error("Please add your name and a comment.");
       return;
     }
     setSubmitting(true);
-    setTimeout(() => {
-      addComment({
-        postSlug,
-        author: author.trim().slice(0, 60),
-        body: body.trim().slice(0, 600),
+    try {
+      const res = await fetch("/api/blog-comments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          postSlug,
+          author: author.trim(),
+          body: body.trim(),
+        }),
       });
+      const data = await res.json();
+      if (!data.ok) {
+        toast.error(data.error || "Could not post comment.");
+        return;
+      }
       setAuthor("");
       setBody("");
       setShowForm(false);
-      setSubmitting(false);
       toast.success("Comment posted", {
         description: "Thanks for joining the conversation!",
       });
-    }, 300);
+      fetchComments();
+    } catch {
+      toast.error("Could not post comment. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
-  if (!hydrated) {
+  if (loading) {
     return (
       <div className="mt-8 pt-5 border-t border-gold-soft/30">
         <div className="flex items-center gap-2">
@@ -257,13 +288,6 @@ function CommentsSection({ postSlug }: { postSlug: string }) {
                     {new Date(c.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })} · {new Date(c.createdAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
                   </p>
                 </div>
-                <button
-                  onClick={() => removeComment(c.id)}
-                  className="text-muted-warm hover:text-ember transition-colors p-1"
-                  aria-label="Delete your comment"
-                >
-                  <Trash2 className="h-3 w-3" />
-                </button>
               </div>
               <p className="font-body text-cream/85 text-[0.84rem] leading-relaxed">{c.body}</p>
             </li>

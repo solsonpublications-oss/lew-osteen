@@ -590,3 +590,54 @@ Task: Wire gift card code into order submission + persist gift cards to Prisma +
 
 3. **Live Stripe Payment Element** — When `STRIPE_PUBLISHABLE_KEY` is set, the demo "Simulate card payment" button should be replaced with the real Stripe.js Payment Element. The demo path is already wired; the live path needs the Stripe.js SDK integration.
 
+
+---
+Task ID: 17 (web dev review cron — round 8)
+Agent: main (Z.ai Code)
+Task: Migrate book reviews + blog comments from localStorage to Prisma (server-side persistence).
+
+## Work Log
+
+### Feature: Book reviews migrated to Prisma
+- Added `BookReview` model to `prisma/schema.prisma`: `id`, `bookSlug` (indexed), `author`, `rating` (1-5), `title`, `body`, `createdAt`. Ran `bun run db:push`.
+- Created `GET /api/reviews?bookSlug=XXX` — returns all reviews for a book (newest first) + the average rating + count.
+- Created `POST /api/reviews` — creates a new review (rate-limited 10 req / 10 min / IP). Validates: bookSlug, author (≤60 chars), rating (1-5), title (≤80 chars), body (10-1000 chars).
+- Updated `src/lib/db.ts` guard to require `bookReview` + `blogComment` models.
+- Rewrote `src/components/site/ReviewsSection.tsx` to fetch from the API instead of the localStorage store:
+  - `useEffect` + `useCallback` fetches reviews on mount + after a new review is posted.
+  - The review form now calls `POST /api/reviews` and refreshes the list on success.
+  - Reviews are now shared across all visitors (server-side persistence).
+  - Loading state shows a pulsing gold star + "Loading reviews…".
+  - Removed the old `useReviews` localStorage store import — no longer needed.
+- Verified: `POST /api/reviews` → 200 (Prisma INSERT succeeded), `GET /api/reviews` → 200 (reviews fetched).
+
+### Feature: Blog comments migrated to Prisma
+- Added `BlogComment` model to `prisma/schema.prisma`: `id`, `postSlug` (indexed), `author`, `body`, `createdAt`. Ran `bun run db:push`.
+- Created `GET /api/blog-comments?postSlug=XXX` — returns all comments for a post (newest first) + count.
+- Created `POST /api/blog-comments` — creates a new comment (rate-limited 10 req / 10 min / IP). Validates: postSlug, author (≤60 chars), body (3-600 chars).
+- Rewrote the `CommentsSection` in `src/components/site/BlogPostModal.tsx` to fetch from the API:
+  - `useEffect` + `useCallback` fetches comments on mount + after a new comment is posted.
+  - The comment form now calls `POST /api/blog-comments` and refreshes the list on success.
+  - Comments are now shared across all visitors.
+  - Loading state shows a pulsing gold MessageSquare icon + "Loading comments…".
+  - Removed the old `useBlogComments` localStorage store import + the delete button (server-side comments can't be deleted by visitors in this build — a future admin moderation tool could handle that).
+  - Removed unused imports (`Trash2`, `ArrowLeft`, `useBlogComments`).
+- Verified: `POST /api/blog-comments` → 200 (Prisma INSERT succeeded), `GET /api/blog-comments` → 200 (comments fetched, count: 1).
+
+### Verification
+- `bun run lint` passes with 0 errors and 0 warnings.
+- All 4 API endpoints return 200:
+  - `POST /api/reviews` → 200 ✓
+  - `GET /api/reviews?bookSlug=the-judgement` → 200 ✓
+  - `POST /api/blog-comments` → 200 ✓
+  - `GET /api/blog-comments?postSlug=the-long-road-to-nod` → 200 ✓
+- Prisma queries confirmed in dev log (INSERT + SELECT on BookReview + BlogComment tables).
+
+## Unresolved Issues
+
+1. **Dev server OOM** — Still present on the 4GB container. Infrastructure constraint.
+
+2. **Admin moderation for reviews/comments** — Visitors can post but not delete. An admin tool to moderate (delete spam) would be useful. Next round priority.
+
+3. **Live Stripe Payment Element** — When `STRIPE_PUBLISHABLE_KEY` is set, the demo "Simulate card payment" button should be replaced with the real Stripe.js Payment Element.
+

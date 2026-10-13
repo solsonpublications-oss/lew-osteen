@@ -141,3 +141,33 @@ model GiftCard {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 }
+
+// ============================================================
+// Book Reviews — reader ratings + written reviews.
+// Persisted so reviews are shared across all visitors.
+// ============================================================
+model BookReview {
+  id        String   @id @default(cuid())
+  bookSlug  String
+  author    String
+  rating    Int      // 1-5
+  title     String
+  body      String
+  createdAt DateTime @default(now())
+
+  @@index([bookSlug])
+}
+
+// ============================================================
+// Blog Comments — reader comments on blog posts.
+// Persisted so comments are shared across all visitors.
+// ============================================================
+model BlogComment {
+  id        String   @id @default(cuid())
+  postSlug  String
+  author    String
+  body      String
+  createdAt DateTime @default(now())
+
+  @@index([postSlug])
+}
