@@ -45,7 +45,7 @@ export function CartDrawer() {
       <SheetContent
         side="right"
         className="w-full sm:max-w-md bg-[#15120F] border-l border-gold-soft text-cream p-0 flex flex-col"
-        aria-describedby={undefined}
+        aria-describedby="cart-drawer-desc"
       >
         {/* Header */}
         <SheetHeader className="px-5 pt-5 pb-3 border-b border-gold-soft/40">
@@ -56,7 +56,7 @@ export function CartDrawer() {
               {count} {count === 1 ? "item" : "items"}
             </span>
           </SheetTitle>
-          <SheetDescription className="font-body text-muted-warm text-[0.78rem] italic">
+          <SheetDescription id="cart-drawer-desc" className="font-body text-muted-warm text-[0.78rem] italic">
             No sign-in required. Your cart is saved in this browser.
           </SheetDescription>
         </SheetHeader>

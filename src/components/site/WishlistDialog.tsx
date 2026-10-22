@@ -89,10 +89,10 @@ export function WishlistDialog() {
     <Dialog open={open} onOpenChange={(o) => !o && close()}>
       <DialogContent
         className="max-w-2xl bg-[#15120F] border-gold/40 text-cream p-0 overflow-hidden max-h-[94vh] overflow-y-auto"
-        aria-describedby={undefined}
+        aria-describedby="wishlist-desc"
       >
         <DialogTitle className="sr-only">Your wishlist</DialogTitle>
-        <DialogDescription className="sr-only">
+        <DialogDescription id="wishlist-desc" className="sr-only">
           Books you've saved for later. Add them to your cart or open the details.
         </DialogDescription>
 

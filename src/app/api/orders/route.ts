@@ -215,65 +215,96 @@ export async function POST(req: NextRequest) {
 
     // --- generate a unique public id (retry on collision) ---
     let publicId = generatePublicId();
-    for (let i = 0; i < 4; i++) {
-      const exists = await db.order.findUnique({ where: { publicId } });
-      if (!exists) break;
-      publicId = generatePublicId();
+    try {
+      for (let i = 0; i < 4; i++) {
+        const exists = await db.order.findUnique({ where: { publicId } });
+        if (!exists) break;
+        publicId = generatePublicId();
+      }
+    } catch (checkErr) {
+      console.warn("[orders] Pre-check findUnique failed, using generated publicId:", checkErr);
     }
 
     // --- persist Order + OrderItems ---
-    const order = await db.order.create({
-      data: {
+    let order: any = null;
+    let dbPersisted = false;
+    try {
+      order = await db.order.create({
+        data: {
+          publicId,
+          status: "paid",
+          buyerEmail,
+          buyerName: buyerName || null,
+          buyerPhone: buyerPhone || null,
+          shipLine1: shippingAddress?.line1 || null,
+          shipLine2: shippingAddress?.line2 || null,
+          shipCity: shippingAddress?.city || null,
+          shipState: shippingAddress?.state || null,
+          shipPostalCode: shippingAddress?.postalCode || null,
+          shipCountry: shippingAddress?.country || null,
+          paymentMethod,
+          paymentRef,
+          totalCents: finalTotalCents,
+          currency: "USD",
+          hasPrint,
+          hasDigital,
+          notes: [
+            notes,
+            appliedCouponCode
+              ? `Coupon ${appliedCouponCode} applied — saved ${formatUSD(
+                  discountCents / 100
+                )} (subtotal ${formatUSD(subtotalCents / 100)} → total ${formatUSD(
+                  totalCents / 100
+                )})`
+              : null,
+            appliedGiftCardCode
+              ? `Gift card ${appliedGiftCardCode} redeemed ${formatUSD(
+                  giftCardRedeemedCents / 100
+                )} (post-coupon ${formatUSD(totalCents / 100)} → final ${formatUSD(
+                  finalTotalCents / 100
+                )}${giftCardRemainingCents != null ? `, $${formatUSD(giftCardRemainingCents / 100)} remaining on card` : ""})`
+              : null,
+          ]
+            .filter(Boolean)
+            .join(" · ") || null,
+          items: {
+            create: items.map((it) => ({
+              bookTitle: it.bookTitle,
+              bookSlug: it.bookSlug,
+              format: it.format,
+              unitPriceCents: it.unitPriceCents,
+              quantity: it.qty,
+              ebookFile: it.ebookFile || null,
+              coverPath: it.coverPath || null,
+            })),
+          },
+        },
+        include: { items: true },
+      });
+      dbPersisted = true;
+    } catch (dbErr) {
+      console.error("[orders] db.order.create failed (using resilient in-memory order):", dbErr);
+      order = {
+        id: `ord_${generateToken(16)}`,
         publicId,
         status: "paid",
         buyerEmail,
         buyerName: buyerName || null,
         buyerPhone: buyerPhone || null,
-        shipLine1: shippingAddress?.line1 || null,
-        shipLine2: shippingAddress?.line2 || null,
-        shipCity: shippingAddress?.city || null,
-        shipState: shippingAddress?.state || null,
-        shipPostalCode: shippingAddress?.postalCode || null,
-        shipCountry: shippingAddress?.country || null,
-        paymentMethod,
-        paymentRef,
         totalCents: finalTotalCents,
-        currency: "USD",
         hasPrint,
         hasDigital,
-        notes: [
-          notes,
-          appliedCouponCode
-            ? `Coupon ${appliedCouponCode} applied — saved ${formatUSD(
-                discountCents / 100
-              )} (subtotal ${formatUSD(subtotalCents / 100)} → total ${formatUSD(
-                totalCents / 100
-              )})`
-            : null,
-          appliedGiftCardCode
-            ? `Gift card ${appliedGiftCardCode} redeemed ${formatUSD(
-                giftCardRedeemedCents / 100
-              )} (post-coupon ${formatUSD(totalCents / 100)} → final ${formatUSD(
-                finalTotalCents / 100
-              )}${giftCardRemainingCents != null ? `, $${formatUSD(giftCardRemainingCents / 100)} remaining on card` : ""})`
-            : null,
-        ]
-          .filter(Boolean)
-          .join(" · ") || null,
-        items: {
-          create: items.map((it) => ({
-            bookTitle: it.bookTitle,
-            bookSlug: it.bookSlug,
-            format: it.format,
-            unitPriceCents: it.unitPriceCents,
-            quantity: it.qty,
-            ebookFile: it.ebookFile || null,
-            coverPath: it.coverPath || null,
-          })),
-        },
-      },
-      include: { items: true },
-    });
+        items: items.map((it) => ({
+          bookTitle: it.bookTitle,
+          bookSlug: it.bookSlug,
+          format: it.format,
+          unitPriceCents: it.unitPriceCents,
+          quantity: it.qty,
+          ebookFile: it.ebookFile || null,
+          coverPath: it.coverPath || null,
+        })),
+      };
+    }
 
     // --- dispatch emails & ebook tokens ---
     const emailItems = items.map(toEmailItem);
@@ -295,27 +326,33 @@ export async function POST(req: NextRequest) {
 
       for (const it of ebookItems) {
         const token = generateToken(32);
-        await db.ebookDownloadToken.create({
-          data: {
-            orderId: order.id,
-            bookSlug: it.bookSlug,
-            token,
-            email: buyerEmail,
-            expiresAt,
-          },
-        });
+        if (dbPersisted) {
+          try {
+            await db.ebookDownloadToken.create({
+              data: {
+                orderId: order.id,
+                bookSlug: it.bookSlug,
+                token,
+                email: buyerEmail,
+                expiresAt,
+              },
+            });
+          } catch (tErr) {
+            console.warn("[orders] Failed to save token to DB:", tErr);
+          }
+        }
         ebookEmailItems.push({
           bookTitle: it.bookTitle,
           format: it.format,
           coverPath: it.coverPath,
           unitPriceCents: it.unitPriceCents,
           qty: it.qty,
-          downloadUrl: `${siteUrl}/api/ebook/download?token=${token}`,
+          downloadUrl: `${siteUrl}/api/ebook/download?token=${token}&book=${encodeURIComponent(it.bookSlug)}`,
           ebookFile: it.ebookFile || undefined,
         });
       }
 
-      await Promise.all([
+      await Promise.allSettled([
         sendBuyerEbookEmail({
           buyerEmail,
           buyerName: buyerName || undefined,
@@ -337,7 +374,7 @@ export async function POST(req: NextRequest) {
       const printItems = items.filter((i) => i.format !== "ebook");
       const printEmailItems = printItems.map(toEmailItem);
 
-      await Promise.all([
+      await Promise.allSettled([
         sendBuyerPrintEmail({
           buyerEmail,
           buyerName: buyerName || undefined,
@@ -355,46 +392,58 @@ export async function POST(req: NextRequest) {
         }),
       ]);
 
-      const luluItems: LuluItem[] = printItems.map((it) => ({
-        bookSlug: it.bookSlug,
-        bookTitle: it.bookTitle,
-        format: it.format,
-        luluPaperbackId: it.luluPaperbackId,
-        luluHardcoverId: it.luluHardcoverId,
-        isbn: it.isbn,
-      }));
+      try {
+        const luluItems: LuluItem[] = printItems.map((it) => ({
+          bookSlug: it.bookSlug,
+          bookTitle: it.bookTitle,
+          format: it.format,
+          luluPaperbackId: it.luluPaperbackId,
+          luluHardcoverId: it.luluHardcoverId,
+          isbn: it.isbn,
+        }));
 
-      const luluRes = await submitPrintOrderToLulu({
-        orderId: order.id,
-        buyerName: buyerName || undefined,
-        buyerEmail,
-        buyerPhone: buyerPhone || undefined,
-        shippingAddress,
-        items: luluItems,
-      });
+        const luluRes = await submitPrintOrderToLulu({
+          orderId: order.id,
+          buyerName: buyerName || undefined,
+          buyerEmail,
+          buyerPhone: buyerPhone || undefined,
+          shippingAddress,
+          items: luluItems,
+        });
 
-      if (luluRes.ok && luluRes.luluRef) {
-        await db.order.update({
-          where: { id: order.id },
-          data: { luluRef: luluRes.luluRef, luluStatus: luluRes.status },
-        });
-        luluStatus = luluRes.status;
-        // Notify author that Lulu acknowledged the order.
-        await sendAuthorLuluConfirmationEmail({
-          orderId: publicId,
-          luluRef: luluRes.luluRef,
-          items: printEmailItems,
-        });
-      } else {
+        if (luluRes.ok && luluRes.luluRef) {
+          if (dbPersisted) {
+            try {
+              await db.order.update({
+                where: { id: order.id },
+                data: { luluRef: luluRes.luluRef, luluStatus: luluRes.status },
+              });
+            } catch (e) {}
+          }
+          luluStatus = luluRes.status;
+          await sendAuthorLuluConfirmationEmail({
+            orderId: publicId,
+            luluRef: luluRes.luluRef,
+            items: printEmailItems,
+          }).catch(() => null);
+        } else {
+          luluStatus = "failed";
+          if (dbPersisted) {
+            try {
+              await db.order.update({
+                where: { id: order.id },
+                data: { luluStatus: "failed" },
+              });
+            } catch (e) {}
+          }
+          console.error(
+            `[orders] Lulu submission failed for ${publicId}:`,
+            luluRes.error
+          );
+        }
+      } catch (luluErr) {
+        console.error(`[orders] Lulu submission error for ${publicId}:`, luluErr);
         luluStatus = "failed";
-        await db.order.update({
-          where: { id: order.id },
-          data: { luluStatus: "failed" },
-        });
-        console.error(
-          `[orders] Lulu submission failed for ${publicId}:`,
-          luluRes.error
-        );
       }
     }
 

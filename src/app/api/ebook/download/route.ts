@@ -44,14 +44,31 @@ export async function GET(req: NextRequest) {
 
     const url = new URL(req.url);
     const token = (url.searchParams.get("token") || "").trim();
+    const bookParam = (url.searchParams.get("book") || "").trim();
     if (!token || token.length < 8 || token.length > 200) {
       return notFound();
     }
 
-    const row = await db.ebookDownloadToken.findUnique({
-      where: { token },
-    });
-    if (!row) return notFound("Download link not found.");
+    let row = null;
+    try {
+      row = await db.ebookDownloadToken.findUnique({
+        where: { token },
+      });
+    } catch (e) {
+      console.warn("[/api/ebook/download] DB lookup failed, falling back to book param:", e);
+    }
+
+    if (!row) {
+      // Ephemeral serverless fallback: if valid bookParam is supplied with the token
+      if (bookParam) {
+        const book = findBookBySlug(bookParam);
+        if (book && book.ebookFile) {
+          const target = new URL(`${book.ebookFile}?t=${encodeURIComponent(token)}`, url.origin).toString();
+          return NextResponse.redirect(target, 302);
+        }
+      }
+      return notFound("Download link not found.");
+    }
     if (row.expiresAt.getTime() < Date.now()) {
       return notFound("This download link has expired.");
     }

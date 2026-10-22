@@ -60,10 +60,10 @@ export function OrderHistoryDialog() {
     <Dialog open={open} onOpenChange={(o) => !o && close()}>
       <DialogContent
         className="max-w-2xl bg-[#15120F] border-gold/40 text-cream p-0 overflow-hidden max-h-[94vh] overflow-y-auto"
-        aria-describedby={undefined}
+        aria-describedby="order-history-desc"
       >
         <DialogTitle className="sr-only">Your order history</DialogTitle>
-        <DialogDescription className="sr-only">
+        <DialogDescription id="order-history-desc" className="sr-only">
           A list of every order you have placed from this browser. Stored locally — clear your browser data to remove.
         </DialogDescription>
 

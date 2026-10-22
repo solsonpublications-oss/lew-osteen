@@ -1,30 +1,8 @@
 import type { Metadata, Viewport } from "next";
-import { Cinzel, Lora, Montserrat } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as SonnerToaster } from "@/components/ui/sonner";
 import { EcommerceModals } from "@/components/site/EcommerceModals";
-
-const cinzel = Cinzel({
-  variable: "--font-cinzel",
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700", "800", "900"],
-  display: "swap",
-});
-
-const lora = Lora({
-  variable: "--font-lora",
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
-  display: "swap",
-});
-
-const montserrat = Montserrat({
-  variable: "--font-montserrat",
-  subsets: ["latin"],
-  weight: ["300", "400", "500", "600", "700", "800"],
-  display: "swap",
-});
 
 const siteUrl = "https://lewosteen.example.com";
 
@@ -274,11 +252,16 @@ export default function RootLayout({
         {/* Preconnect to Google Fonts for performance */}
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        {/* Google Fonts */}
+        <link
+          rel="stylesheet"
+          href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600;700;800;900&family=Lora:ital,wght@0,400;0,500;0,600;0,700;1,400;1,700&family=Montserrat:wght@300;400;500;600;700;800&display=swap"
+        />
         {/* Prefetch the author image (used as favicon + hero) */}
         <link rel="prefetch" href="/images/author-lew-osteen.jpg" as="image" />
       </head>
       <body
-        className={`${cinzel.variable} ${lora.variable} ${montserrat.variable} antialiased bg-[#0D0B0A] text-[#F3EBDD] font-lora`}
+        className="antialiased bg-[#0D0B0A] text-[#F3EBDD] font-lora"
       >
         {children}
         <EcommerceModals />

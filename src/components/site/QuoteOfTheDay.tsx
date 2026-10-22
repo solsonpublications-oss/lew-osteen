@@ -19,16 +19,15 @@ const HOLD_MS = 6000;
 const FADE_MS = 700;
 
 export function QuoteOfTheDay() {
-  // Pick a deterministic starting quote based on the day, so refreshes
-  // don't always restart from index 0.
-  const [idx, setIdx] = useState(() => {
-    if (typeof window === "undefined") return 0;
-    const dayMs = 24 * 60 * 60 * 1000;
-    return Math.floor(Date.now() / dayMs) % QUOTES.length;
-  });
+  // Initialize with index 0 to guarantee identical SSR and client hydration HTML.
+  // Updated on mount with day's quote.
+  const [idx, setIdx] = useState(0);
   const [visible, setVisible] = useState(true);
 
   useEffect(() => {
+    const dayMs = 24 * 60 * 60 * 1000;
+    setIdx(Math.floor(Date.now() / dayMs) % QUOTES.length);
+
     let fadeT: ReturnType<typeof setTimeout>;
     let nextT: ReturnType<typeof setTimeout>;
     const cycle = () => {

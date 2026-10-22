@@ -38,12 +38,17 @@ const EXCERPT_PARAGRAPHS = [
 ];
 
 function useCountdown(target: string | null) {
-  const [now, setNow] = useState(() => Date.now());
+  const [mounted, setMounted] = useState(false);
+  const [now, setNow] = useState(0);
+
   useEffect(() => {
+    setMounted(true);
+    setNow(Date.now());
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
   }, []);
-  if (!target) return null;
+
+  if (!mounted || !target) return null;
   const diff = Math.max(0, new Date(target).getTime() - now);
   const days = Math.floor(diff / 86400000);
   const hours = Math.floor((diff % 86400000) / 3600000);

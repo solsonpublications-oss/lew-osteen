@@ -521,10 +521,10 @@ export function CheckoutDialog() {
     <Dialog open={open} onOpenChange={(o) => !o && close()}>
       <DialogContent
         className="max-w-2xl bg-[#15120F] border-gold/40 text-cream p-0 overflow-hidden max-h-[94vh] overflow-y-auto"
-        aria-describedby={undefined}
+        aria-describedby="checkout-desc"
       >
         <DialogTitle className="sr-only">Checkout</DialogTitle>
-        <DialogDescription className="sr-only">
+        <DialogDescription id="checkout-desc" className="sr-only">
           Complete your purchase from Lew Osteen.
         </DialogDescription>
 
