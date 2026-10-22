@@ -18,6 +18,7 @@ type Order = {
   publicId: string; status: string; buyerEmail: string; buyerName: string | null;
   paymentMethod: string; totalCents: number; totalUSD: string; currency: string;
   hasPrint: boolean; hasDigital: boolean; luluStatus: string | null; luluRef: string | null;
+  carrier: string | null; trackingNumber: string | null; trackingUrl: string | null;
   notes: string | null; createdAt: string; items: OrderItem[];
 };
 type AdminData = {
@@ -632,6 +633,28 @@ function OrdersTable({
                               <code className="font-ui text-[0.66rem] text-cream bg-deep px-2 py-1 rounded border border-gold-soft">
                                 {o.luluRef}
                               </code>
+                            </div>
+                          )}
+                          {o.trackingNumber && (
+                            <div>
+                              <h4 className="font-ui text-[0.58rem] uppercase tracking-widest-2 text-gold/80 mb-1">
+                                Tracking ({o.carrier || "Carrier"})
+                              </h4>
+                              <div className="flex items-center gap-2">
+                                <code className="font-ui text-[0.66rem] text-gold-bright bg-deep px-2 py-1 rounded border border-gold/40">
+                                  {o.trackingNumber}
+                                </code>
+                                {o.trackingUrl && (
+                                  <a
+                                    href={o.trackingUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="font-ui text-[0.56rem] uppercase tracking-widest-2 text-gold hover:underline"
+                                  >
+                                    View Tracking ↗
+                                  </a>
+                                )}
+                              </div>
                             </div>
                           )}
                           {o.notes && (

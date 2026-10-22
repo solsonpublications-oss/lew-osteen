@@ -3,6 +3,7 @@ import { Cinzel, Lora, Montserrat } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as SonnerToaster } from "@/components/ui/sonner";
+import { EcommerceModals } from "@/components/site/EcommerceModals";
 
 const cinzel = Cinzel({
   variable: "--font-cinzel",
@@ -280,6 +281,7 @@ export default function RootLayout({
         className={`${cinzel.variable} ${lora.variable} ${montserrat.variable} antialiased bg-[#0D0B0A] text-[#F3EBDD] font-lora`}
       >
         {children}
+        <EcommerceModals />
         <Toaster />
         <SonnerToaster
           position="bottom-right"

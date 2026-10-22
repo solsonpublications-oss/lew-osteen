@@ -146,6 +146,9 @@ function OrderRow({
   const [liveStatus, setLiveStatus] = useState<null | {
     status?: string;
     luluStatus?: string;
+    carrier?: string;
+    trackingNumber?: string;
+    trackingUrl?: string;
     loading: boolean;
     error?: string;
   }>(null);
@@ -173,6 +176,9 @@ function OrderRow({
         loading: false,
         status: data.order?.status,
         luluStatus: data.order?.luluStatus,
+        carrier: data.order?.carrier,
+        trackingNumber: data.order?.trackingNumber,
+        trackingUrl: data.order?.trackingUrl,
       });
     } catch {
       setLiveStatus({ loading: false, error: "Network error." });
@@ -256,7 +262,7 @@ function OrderRow({
                 <span className="text-ember">{liveStatus.error}</span>
               ) : (
                 <span className="text-gold-bright">
-                  {liveStatus?.status || order.luluStatus ? "paid" : "paid"}
+                  {liveStatus?.status || (order.luluStatus ? "processing" : "paid")}
                   {order.hasPrint && liveStatus?.luluStatus && (
                     <span className="text-muted-warm ml-1">· Lulu: {liveStatus.luluStatus}</span>
                   )}
@@ -272,6 +278,30 @@ function OrderRow({
               {copied ? "Copied" : "Copy ID"}
             </button>
           </div>
+
+          {/* Carrier Tracking Badge (if physical order has shipped) */}
+          {liveStatus?.trackingNumber && (
+            <div className="my-2 p-2.5 rounded-sm border border-gold/40 bg-gold/10 flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <div className="font-ui text-[0.56rem] uppercase tracking-widest-2 text-gold-bright">
+                  {liveStatus.carrier || "Carrier"} Tracking
+                </div>
+                <div className="font-mono text-cream text-[0.72rem] tracking-wider truncate">
+                  {liveStatus.trackingNumber}
+                </div>
+              </div>
+              {liveStatus.trackingUrl && (
+                <a
+                  href={liveStatus.trackingUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-ui text-[0.58rem] uppercase tracking-widest-2 text-[#15120F] bg-gold hover:bg-gold-bright px-2.5 py-1 rounded-sm flex items-center gap-1 transition-colors flex-shrink-0 font-semibold"
+                >
+                  Track <ExternalLink className="h-3 w-3" />
+                </a>
+              )}
+            </div>
+          )}
 
           <Separator className="my-1 bg-gold-soft/30" />
 

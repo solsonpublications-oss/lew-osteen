@@ -283,7 +283,15 @@ export async function POST(req: NextRequest) {
     if (hasDigital) {
       const ebookItems = items.filter((i) => i.format === "ebook");
       const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-      const ebookEmailItems: Array<{ bookTitle: string; format: string; downloadUrl: string }> = [];
+      const ebookEmailItems: Array<{
+        bookTitle: string;
+        format: string;
+        downloadUrl: string;
+        coverPath?: string;
+        unitPriceCents?: number;
+        qty?: number;
+        ebookFile?: string;
+      }> = [];
 
       for (const it of ebookItems) {
         const token = generateToken(32);
@@ -303,6 +311,7 @@ export async function POST(req: NextRequest) {
           unitPriceCents: it.unitPriceCents,
           qty: it.qty,
           downloadUrl: `${siteUrl}/api/ebook/download?token=${token}`,
+          ebookFile: it.ebookFile || undefined,
         });
       }
 
@@ -316,6 +325,7 @@ export async function POST(req: NextRequest) {
         sendAuthorEbookSoldEmail({
           orderId: publicId,
           buyerEmail,
+          buyerName: buyerName || undefined,
           items: emailItems.filter((i) => i.format === "ebook"),
         }),
       ]);
@@ -338,6 +348,8 @@ export async function POST(req: NextRequest) {
         sendAuthorPrintOrderEmail({
           orderId: publicId,
           buyerEmail,
+          buyerName: buyerName || undefined,
+          buyerPhone: buyerPhone || undefined,
           shippingAddress,
           items: printEmailItems,
         }),
@@ -356,6 +368,7 @@ export async function POST(req: NextRequest) {
         orderId: order.id,
         buyerName: buyerName || undefined,
         buyerEmail,
+        buyerPhone: buyerPhone || undefined,
         shippingAddress,
         items: luluItems,
       });

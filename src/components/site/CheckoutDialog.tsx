@@ -313,14 +313,33 @@ export function CheckoutDialog() {
   const infoValid =
     emailValid &&
     (!hasPrint ||
-      (ship.line1.trim() && ship.city.trim() && ship.state.trim() &&
-        ship.postalCode.trim() && ship.country.trim()));
+      (name.trim() !== "" &&
+        phone.trim() !== "" &&
+        ship.line1.trim() !== "" &&
+        ship.city.trim() !== "" &&
+        ship.state.trim() !== "" &&
+        ship.postalCode.trim() !== "" &&
+        ship.country.trim() !== ""));
 
   // ---------- Step transitions ----------
   const goToPayment = async () => {
-    if (!infoValid) {
-      setError("Please complete all required fields.");
+    if (!emailValid) {
+      setError("Please provide a valid email address for your order confirmation.");
       return;
+    }
+    if (hasPrint) {
+      if (!name.trim()) {
+        setError("Please enter your recipient full name for print delivery.");
+        return;
+      }
+      if (!phone.trim()) {
+        setError("Please enter a contact phone number (required by carrier for print shipping).");
+        return;
+      }
+      if (!ship.line1.trim() || !ship.city.trim() || !ship.state.trim() || !ship.postalCode.trim() || !ship.country.trim()) {
+        setError("Please complete all shipping address fields for print book delivery.");
+        return;
+      }
     }
     setError(null);
     setStep("payment");
@@ -728,14 +747,14 @@ function InfoStep(props: {
       <section>
         <SectionLabel icon={Mail}>Contact details</SectionLabel>
         <div className="grid sm:grid-cols-2 gap-3 mt-3">
-          <Field label="Email *" required>
+          <Field label="Email Address *" required>
             <Input
               type="email" value={email} onChange={(e) => setEmail(e.target.value)}
               placeholder="you@email.com"
               className="bg-deep/80 border-gold-soft text-cream placeholder:text-muted-warm/60 focus:border-gold focus:ring-gold/40"
             />
           </Field>
-          <Field label="Name (optional)">
+          <Field label={hasPrint ? "Recipient Full Name *" : "Name (optional)"} required={hasPrint}>
             <Input
               value={name} onChange={(e) => setName(e.target.value)}
               placeholder="Jane Reader"
@@ -744,29 +763,29 @@ function InfoStep(props: {
           </Field>
         </div>
         <div className="mt-3">
-          <Field label="Phone (optional)">
+          <Field label={hasPrint ? "Contact Phone * (required for carrier delivery)" : "Phone (optional)"} required={hasPrint}>
             <Input
               value={phone} onChange={(e) => setPhone(e.target.value)}
-              placeholder="+1 555 000 0000"
-              className="bg-deep/80 border-gold-soft text-cream placeholder:text-muted-warm/60 focus:border-gold focus:ring-gold/40 max-w-xs"
+              placeholder="+1 (555) 000-0000"
+              className="bg-deep/80 border-gold-soft text-cream placeholder:text-muted-warm/60 focus:border-gold focus:ring-gold/40 max-w-sm"
             />
           </Field>
         </div>
         <p className="font-body text-[0.72rem] text-muted-warm mt-2 italic">
-          Your eBook delivery link and order confirmation will be sent to this email.
+          Your order receipt, eBook download link, and shipping tracking notifications will be sent to this email.
         </p>
       </section>
 
       {/* Shipping (only if print items) */}
       {hasPrint && (
         <section>
-          <SectionLabel icon={Truck}>Shipping address</SectionLabel>
+          <SectionLabel icon={Truck}>Shipping address (Lulu Print on Demand)</SectionLabel>
           <div className="grid sm:grid-cols-2 gap-3 mt-3">
-            <Field label="Address line 1 *" required>
+            <Field label="Street address *" required>
               <Input value={ship.line1} onChange={(e) => setShip({ ...ship, line1: e.target.value })} placeholder="123 Main St" className="bg-deep/80 border-gold-soft text-cream placeholder:text-muted-warm/60 focus:border-gold focus:ring-gold/40" />
             </Field>
-            <Field label="Address line 2">
-              <Input value={ship.line2} onChange={(e) => setShip({ ...ship, line2: e.target.value })} placeholder="Apt, suite (optional)" className="bg-deep/80 border-gold-soft text-cream placeholder:text-muted-warm/60 focus:border-gold focus:ring-gold/40" />
+            <Field label="Apartment, suite, unit (optional)">
+              <Input value={ship.line2} onChange={(e) => setShip({ ...ship, line2: e.target.value })} placeholder="Apt 4B" className="bg-deep/80 border-gold-soft text-cream placeholder:text-muted-warm/60 focus:border-gold focus:ring-gold/40" />
             </Field>
             <Field label="City *" required>
               <Input value={ship.city} onChange={(e) => setShip({ ...ship, city: e.target.value })} placeholder="Austin" className="bg-deep/80 border-gold-soft text-cream placeholder:text-muted-warm/60 focus:border-gold focus:ring-gold/40" />
@@ -774,7 +793,7 @@ function InfoStep(props: {
             <Field label="State / Province *" required>
               <Input value={ship.state} onChange={(e) => setShip({ ...ship, state: e.target.value })} placeholder="TX" className="bg-deep/80 border-gold-soft text-cream placeholder:text-muted-warm/60 focus:border-gold focus:ring-gold/40" />
             </Field>
-            <Field label="Postal code *" required>
+            <Field label="Postal / ZIP code *" required>
               <Input value={ship.postalCode} onChange={(e) => setShip({ ...ship, postalCode: e.target.value })} placeholder="78701" className="bg-deep/80 border-gold-soft text-cream placeholder:text-muted-warm/60 focus:border-gold focus:ring-gold/40" />
             </Field>
             <Field label="Country *" required>
@@ -782,9 +801,7 @@ function InfoStep(props: {
             </Field>
           </div>
           <p className="font-body text-[0.72rem] text-muted-warm mt-2 italic">
-            Print editions are produced and shipped by Lulu print-on-demand. You
-            will receive a shipping confirmation from Lulu once your books are
-            dispatched.
+            Physical books are custom printed and fulfilled directly by Lulu Print on Demand. You will receive an automated shipping confirmation with carrier tracking as soon as your order leaves the facility.
           </p>
         </section>
       )}
@@ -1233,10 +1250,9 @@ function ConfirmationStep(props: {
               </h4>
             </div>
             <p className="font-body text-[0.78rem] text-muted-warm leading-relaxed">
-              Submitted to Lulu print-on-demand
+              Order dispatched to Lulu print-on-demand
               {order.luluStatus && order.luluStatus !== "demo" ? ` (status: ${order.luluStatus})` : " (demo submission)"}.
-              You will receive a shipping confirmation from Lulu once your books
-              are dispatched.
+              As soon as Lulu finishes printing and ships your books, you will receive an email with your shipping carrier and tracking link.
             </p>
           </div>
         )}

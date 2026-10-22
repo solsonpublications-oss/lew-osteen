@@ -1,12 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, Info, Shuffle, Search, X, ArrowDownWideNarrow } from "lucide-react";
-import { books, type Book, type Genre, GENRES } from "@/data/books";
+import { ChevronLeft, ChevronRight, Info, Shuffle, Search, X, ArrowDownWideNarrow, ShoppingBag, Zap, Check } from "lucide-react";
+import { books, type Book, type Genre, GENRES, FORMAT_LABEL, availableFormats } from "@/data/books";
 import { BookCover } from "./BookCover";
 import { RevealOnScroll } from "./RevealOnScroll";
 import { SectionHeading } from "./SectionHeading";
 import { useRecentlyViewed } from "@/lib/recently-viewed-store";
+import { useCart } from "@/lib/cart-store";
+import { useUI } from "@/lib/ui-store";
+import { toast } from "sonner";
 import { bookSlug } from "@/lib/slug";
 import { cn } from "@/lib/utils";
 
@@ -487,10 +490,29 @@ function BookCard({
   onSelect: () => void;
   draggedRef: DragStateRef;
 }) {
-  // Click only opens the modal if the pointer didn't actually drag.
+  const openFormatPicker = useUI((s) => s.openFormatPicker);
+
+  // Available formats + starting price
+  const formats = availableFormats(book);
+  const defaultFormat = formats[0] || "ebook";
+  const startingPrice = book.pricing[defaultFormat] ?? book.pricing.ebook ?? book.pricing.paperback ?? 9.99;
+
+  // Click opens the product page if the pointer didn't actually drag.
   const handleClick = () => {
     if (draggedRef.current && draggedRef.current.moved) return;
     onSelect();
+  };
+
+  const handleAddToCart = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    openFormatPicker(book, "cart");
+  };
+
+  const handleBuyNow = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    openFormatPicker(book, "buyNow");
   };
 
   return (
@@ -507,36 +529,79 @@ function BookCard({
       }}
       aria-label={`View details for ${book.title}`}
     >
-      <div className="relative">
+      <div className="relative overflow-hidden rounded-sm">
         <BookCover
           src={book.cover}
           alt={`Cover of ${book.title} by Lew Osteen`}
           title={book.title}
           subtitle={book.subtitle}
           variant={index}
-          className="rounded-sm"
+          className="rounded-sm transition-transform duration-300 group-hover:scale-[1.02]"
         />
 
-        {/* Hover overlay: quick actions + peek description */}
-        <div className="absolute inset-0 bg-deep/95 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-between p-4 rounded-sm frame-gold">
+        {/* Hover overlay with Buy Now & Add to Cart on the cover */}
+        <div
+          className="absolute inset-0 bg-deep/95 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex flex-col justify-between p-3.5 rounded-sm frame-gold z-20 pointer-events-none group-hover:pointer-events-auto"
+          onPointerDown={(e) => e.stopPropagation()}
+        >
           <div>
-            <span className="font-ui text-[0.58rem] uppercase tracking-widest-2 text-gold/70 block mb-2">
-              {book.genre} · {book.year}
-            </span>
-            <p className="font-body text-cream/85 text-[0.82rem] leading-relaxed line-clamp-4">
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="font-ui text-[0.56rem] uppercase tracking-widest-2 text-gold/80">
+                {book.genre}
+              </span>
+              <span className="font-heading text-gold-bright text-xs font-semibold">
+                ${startingPrice.toFixed(2)}
+              </span>
+            </div>
+            <h4 className="font-heading text-cream text-[0.82rem] uppercase tracking-wide leading-tight line-clamp-1 mb-1">
+              {book.title}
+            </h4>
+            <p className="font-body text-cream/80 text-[0.74rem] leading-snug line-clamp-3">
               {book.description}
             </p>
           </div>
-          <div className="flex flex-col gap-2">
+
+          <div
+            className="flex flex-col gap-2 mt-2 pt-2 border-t border-gold-soft/30"
+            onPointerDown={(e) => e.stopPropagation()}
+          >
+            {/* Buy Now button on cover */}
             <button
+              type="button"
+              onPointerDown={(e) => e.stopPropagation()}
+              onPointerUp={(e) => e.stopPropagation()}
+              onClick={handleBuyNow}
+              className="btn-gold w-full inline-flex items-center justify-center gap-1.5 text-[0.68rem] py-2 px-3 font-ui uppercase tracking-wider font-semibold shadow-md active:scale-95 transition-transform cursor-pointer"
+            >
+              <Zap className="h-3 w-3 fill-current" />
+              Buy Now · ${startingPrice.toFixed(2)}
+            </button>
+
+            {/* Add to Cart button on cover */}
+            <button
+              type="button"
+              onPointerDown={(e) => e.stopPropagation()}
+              onPointerUp={(e) => e.stopPropagation()}
+              onClick={handleAddToCart}
+              className="btn-outline-gold w-full inline-flex items-center justify-center gap-1.5 text-[0.66rem] py-1.5 px-3 font-ui uppercase tracking-wider font-semibold active:scale-95 transition-transform cursor-pointer"
+            >
+              <ShoppingBag className="h-3 w-3" />
+              Add to Cart
+            </button>
+
+            {/* View Details link */}
+            <button
+              type="button"
+              onPointerDown={(e) => e.stopPropagation()}
+              onPointerUp={(e) => e.stopPropagation()}
               onClick={(e) => {
                 e.stopPropagation();
                 onSelect();
               }}
-              className="btn-gold inline-flex items-center justify-center gap-1.5 text-[0.62rem] py-2 px-3"
+              className="font-ui text-[0.58rem] uppercase tracking-widest-2 text-muted-warm hover:text-gold-bright flex items-center justify-center gap-1 pt-0.5 transition-colors cursor-pointer"
             >
-              <Info className="h-3 w-3" />
-              View Details
+              <Info className="h-2.5 w-2.5" />
+              View Book Page
             </button>
           </div>
         </div>
@@ -544,12 +609,46 @@ function BookCard({
 
       {/* Caption under cover */}
       <div className="mt-3 text-center px-1">
-        <h3 className="font-heading text-cream text-[0.92rem] uppercase tracking-wide leading-tight line-clamp-2">
+        <h3 className="font-heading text-cream text-[0.92rem] uppercase tracking-wide leading-tight line-clamp-1 group-hover:text-gold-bright transition-colors">
           {book.title}
         </h3>
-        <p className="font-ui text-[0.6rem] uppercase tracking-widest-2 text-gold/70 mt-1">
-          {book.year}
-        </p>
+        <div className="flex items-center justify-center gap-2 mt-1">
+          <span className="font-ui text-[0.62rem] uppercase tracking-widest text-gold-bright font-semibold">
+            From ${startingPrice.toFixed(2)}
+          </span>
+          <span className="font-ui text-[0.56rem] text-muted-warm">
+            · {book.year}
+          </span>
+        </div>
+
+        {/* Quick action pill row under caption (always accessible on mobile) */}
+        <div
+          className="flex items-center justify-center gap-1.5 mt-2"
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          <button
+            type="button"
+            onPointerDown={(e) => e.stopPropagation()}
+            onPointerUp={(e) => e.stopPropagation()}
+            onClick={handleAddToCart}
+            className="inline-flex items-center gap-1 px-2 py-1 rounded-sm border border-gold-soft/60 hover:border-gold hover:bg-gold/10 font-ui text-[0.58rem] uppercase tracking-widest-2 text-gold/90 transition-all cursor-pointer"
+            title="Add to Cart"
+          >
+            <ShoppingBag className="h-2.5 w-2.5" />
+            Cart
+          </button>
+          <button
+            type="button"
+            onPointerDown={(e) => e.stopPropagation()}
+            onPointerUp={(e) => e.stopPropagation()}
+            onClick={handleBuyNow}
+            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-sm bg-gold hover:bg-gold-bright text-[#15120F] font-ui text-[0.58rem] uppercase tracking-widest-2 font-semibold shadow-sm transition-all cursor-pointer"
+            title="Buy Now"
+          >
+            <Zap className="h-2.5 w-2.5 fill-current" />
+            Buy Now
+          </button>
+        </div>
       </div>
     </article>
   );

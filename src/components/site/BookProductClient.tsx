@@ -160,28 +160,28 @@ export function BookProductClient({ book }: { book: Book }) {
           </div>
 
           {/* Action row */}
-          <div className="flex flex-wrap items-center gap-2 mt-4">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 mt-4">
             <button
               onClick={onAddToCart}
               disabled={adding || !format}
-              className="btn-outline-gold inline-flex items-center justify-center gap-2 text-[0.66rem] py-2.5 px-4 disabled:opacity-60"
+              className="btn-outline-gold flex-1 inline-flex items-center justify-center gap-2 text-xs sm:text-[0.78rem] font-ui uppercase tracking-wider py-3 px-5 rounded-sm disabled:opacity-60 cursor-pointer active:scale-95 transition-transform"
             >
               {adding ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
-                <ShoppingBag className="h-3.5 w-3.5" />
+                <ShoppingBag className="h-4 w-4" />
               )}
               Add to Cart
             </button>
             <button
               onClick={onBuyNow}
               disabled={buyingNow || !format}
-              className="btn-gold inline-flex items-center justify-center gap-2 text-[0.66rem] py-2.5 px-4 disabled:opacity-60"
+              className="btn-gold flex-1 inline-flex items-center justify-center gap-2 text-xs sm:text-[0.78rem] font-ui uppercase tracking-wider py-3 px-5 rounded-sm disabled:opacity-60 cursor-pointer active:scale-95 transition-transform shadow-md"
             >
               {buyingNow ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
-                <Zap className="h-3.5 w-3.5" />
+                <Zap className="h-4 w-4 fill-current" />
               )}
               Buy Now
             </button>

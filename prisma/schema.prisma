@@ -81,7 +81,10 @@ model Order {
 
   // Lulu submission reference (for print orders)
   luluRef         String?
-  luluStatus      String?  // "demo" | "submitted" | "acknowledged" | "rejected"
+  luluStatus      String?  // "demo" | "submitted" | "acknowledged" | "in_production" | "shipped" | "rejected" | "failed"
+  carrier         String?  // e.g. "USPS", "FedEx", "DHL", "Mail"
+  trackingNumber  String?  // e.g. tracking code or shipping identifier
+  trackingUrl     String?  // tracking status web link
 
   totalCents      Int      // order grand total in cents (USD)
   currency        String   @default("USD")

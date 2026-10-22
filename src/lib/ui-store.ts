@@ -12,6 +12,10 @@ type UIState = {
   checkoutOpen: boolean;
   orderHistoryOpen: boolean;
   wishlistOpen: boolean;
+  // format picker modal — prompts visitor to pick eBook, Paperback, or Hardcover
+  formatPickerOpen: boolean;
+  formatPickerBook: import("@/data/books").Book | null;
+  formatPickerIntent: "cart" | "buyNow";
   // when set, checkout starts directly with this single item (Buy Now flow)
   buyNowItem: null | {
     bookSlug: string;
@@ -31,6 +35,8 @@ type UIState = {
   openWishlist: () => void;
   closeWishlist: () => void;
   toggleWishlist: () => void;
+  openFormatPicker: (book: import("@/data/books").Book, intent?: "cart" | "buyNow") => void;
+  closeFormatPicker: () => void;
   startBuyNow: (item: {
     bookSlug: string;
     bookTitle: string;
@@ -46,6 +52,9 @@ export const useUI = create<UIState>((set) => ({
   checkoutOpen: false,
   orderHistoryOpen: false,
   wishlistOpen: false,
+  formatPickerOpen: false,
+  formatPickerBook: null,
+  formatPickerIntent: "cart",
   buyNowItem: null,
   openCart: () => set({ cartOpen: true }),
   closeCart: () => set({ cartOpen: false }),
@@ -58,7 +67,10 @@ export const useUI = create<UIState>((set) => ({
   openWishlist: () => set({ wishlistOpen: true }),
   closeWishlist: () => set({ wishlistOpen: false }),
   toggleWishlist: () => set((s) => ({ wishlistOpen: !s.wishlistOpen })),
+  openFormatPicker: (book, intent = "cart") =>
+    set({ formatPickerOpen: true, formatPickerBook: book, formatPickerIntent: intent }),
+  closeFormatPicker: () => set({ formatPickerOpen: false, formatPickerBook: null }),
   startBuyNow: (item) =>
-    set({ buyNowItem: item, checkoutOpen: true, cartOpen: false }),
+    set({ buyNowItem: item, checkoutOpen: true, cartOpen: false, formatPickerOpen: false }),
   clearBuyNow: () => set({ buyNowItem: null }),
 }));

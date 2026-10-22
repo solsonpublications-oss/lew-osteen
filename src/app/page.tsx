@@ -11,22 +11,12 @@ import { BackToTop } from "@/components/site/BackToTop";
 import { LaunchListModal } from "@/components/site/LaunchListModal";
 import { SectionProgressDots } from "@/components/site/SectionProgressDots";
 import { SectionDivider } from "@/components/site/SectionDivider";
-import { CartDrawer } from "@/components/site/CartDrawer";
 // Lazy-load the heavier / below-the-fold sections so Turbopack compiles
 // them on-demand instead of all at once. This dramatically reduces the
 // peak memory used during the initial page compile (fixes the OOM kills
 // we were seeing on the 4GB container).
 import dynamic from "next/dynamic";
 
-const CheckoutDialog = dynamic(
-  () => import("@/components/site/CheckoutDialog").then((m) => m.CheckoutDialog)
-);
-const OrderHistoryDialog = dynamic(
-  () => import("@/components/site/OrderHistoryDialog").then((m) => m.OrderHistoryDialog)
-);
-const WishlistDialog = dynamic(
-  () => import("@/components/site/WishlistDialog").then((m) => m.WishlistDialog)
-);
 const RecentlyViewed = dynamic(
   () => import("@/components/site/RecentlyViewed").then((m) => m.RecentlyViewed)
 );
@@ -95,10 +85,6 @@ export default function Home() {
       <Footer />
       <BackToTop />
       <LaunchListModal />
-      <CartDrawer />
-      <CheckoutDialog />
-      <OrderHistoryDialog />
-      <WishlistDialog />
     </div>
   );
 }

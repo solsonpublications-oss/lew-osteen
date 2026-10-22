@@ -30,6 +30,7 @@ export type SMTPConfig = {
   user: string;
   pass: string;
   from: string;
+  isGmail: boolean;
   isDemo: boolean;
 };
 
@@ -37,6 +38,8 @@ export type LuluConfig = {
   clientId: string;
   clientSecret: string;
   baseUrl: string;
+  oauthRealm: string;
+  webhookSecret: string;
   isDemo: boolean;
 };
 
@@ -71,27 +74,40 @@ export function getPayPalConfig(): PayPalConfig {
 }
 
 export function getSMTPConfig(): SMTPConfig {
-  const host = env("SMTP_HOST");
-  const user = env("SMTP_USER");
-  const pass = env("SMTP_PASS");
+  // Support both GMAIL_* and standard SMTP_* env vars
+  const gmailUser = env("GMAIL_USER");
+  const gmailPass = env("GMAIL_APP_PASSWORD");
+
+  const user = gmailUser || env("SMTP_USER");
+  const rawPass = gmailPass || env("SMTP_PASS");
+  const pass = rawPass.replace(/\s+/g, ""); // Strip spaces commonly copied with 16-char Google App Passwords
+
+  const isGmail = (gmailUser !== "" && gmailPass !== "") || user.endsWith("@gmail.com") || env("SMTP_HOST").includes("gmail");
+  const host = env("SMTP_HOST") || (isGmail ? "smtp.gmail.com" : "");
   const portRaw = env("SMTP_PORT");
   const port = portRaw ? parseInt(portRaw, 10) : 465;
-  const from = env("SMTP_FROM") || "Lew Osteen <orders@lewosteen.com>";
-  // Demo when no creds. A bare host with no auth is also treated as demo.
-  const isDemo = host === "" || user === "" || pass === "";
-  return { host, port, user, pass, from, isDemo };
+
+  const defaultFrom = user ? `Lew Osteen <${user}>` : "Lew Osteen <orders@lewosteen.com>";
+  const from = env("SMTP_FROM") || defaultFrom;
+
+  // Demo when no credentials are provided
+  const isDemo = user === "" || pass === "";
+  return { host, port, user, pass, from, isGmail, isDemo };
 }
 
 export function getLuluConfig(): LuluConfig {
   const clientId = env("LULU_CLIENT_ID");
   const clientSecret = env("LULU_CLIENT_SECRET");
   const baseUrl = env("LULU_BASE_URL") || "https://api.lulu.com";
+  const oauthRealm = env("LULU_OAUTH_REALM") || "glasgow";
+  const webhookSecret = env("LULU_WEBHOOK_SECRET");
   const isDemo = clientId === "" || clientSecret === "";
-  return { clientId, clientSecret, baseUrl, isDemo };
+  return { clientId, clientSecret, baseUrl, oauthRealm, webhookSecret, isDemo };
 }
 
 export function getAuthorEmail(): string {
-  return env("AUTHOR_EMAIL") || "lew@lewosteen.com";
+  const cfg = getSMTPConfig();
+  return env("AUTHOR_EMAIL") || cfg.user || "lew@lewosteen.com";
 }
 
 export function getSiteUrl(): string {

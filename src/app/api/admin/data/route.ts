@@ -116,6 +116,9 @@ export async function GET(req: NextRequest) {
       hasDigital: o.hasDigital,
       luluStatus: o.luluStatus,
       luluRef: o.luluRef,
+      carrier: o.carrier,
+      trackingNumber: o.trackingNumber,
+      trackingUrl: o.trackingUrl,
       notes: o.notes,
       createdAt: o.createdAt,
       items: o.items.map((it) => ({
