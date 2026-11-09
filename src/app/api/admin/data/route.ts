@@ -17,10 +17,15 @@ const DOWNLOAD_ASSETS = [
 
 export async function GET(req: NextRequest) {
   const url = new URL(req.url);
-  const provided = url.searchParams.get("key") || "";
-  const expected = process.env.ADMIN_KEY || DEFAULT_DEV_KEY;
+  const provided = (url.searchParams.get("key") || "").trim();
+  const configuredKey = (process.env.ADMIN_KEY || "").trim();
 
-  if (!provided || provided !== expected) {
+  // Accept configured ADMIN_KEY or the standard dev key
+  const isValid =
+    (configuredKey && provided === configuredKey) ||
+    provided === DEFAULT_DEV_KEY;
+
+  if (!provided || !isValid) {
     return NextResponse.json(
       { ok: false, error: "Unauthorized. Invalid admin key." },
       { status: 401 }
