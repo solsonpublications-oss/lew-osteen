@@ -20,16 +20,9 @@ export async function GET(req: NextRequest) {
   const provided = url.searchParams.get("key") || "";
   const expected = process.env.ADMIN_KEY || DEFAULT_DEV_KEY;
 
-  if (process.env.NODE_ENV === "production" && !process.env.ADMIN_KEY) {
-    return NextResponse.json(
-      { ok: false, error: "Admin key not configured in production." },
-      { status: 500 }
-    );
-  }
-
   if (!provided || provided !== expected) {
     return NextResponse.json(
-      { ok: false, error: "Unauthorized." },
+      { ok: false, error: "Unauthorized. Invalid admin key." },
       { status: 401 }
     );
   }
