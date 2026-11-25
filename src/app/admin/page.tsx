@@ -169,10 +169,6 @@ export default function AdminPage() {
               {loading ? "Verifying…" : "Sign In"}
             </button>
           </form>
-
-          <p className="text-center font-ui text-[0.58rem] uppercase tracking-widest-2 text-muted-warm/50 mt-6">
-            Dev key: <code className="text-gold/70">dev-admin-key</code> (set ADMIN_KEY in production)
-          </p>
         </div>
       </div>
     );

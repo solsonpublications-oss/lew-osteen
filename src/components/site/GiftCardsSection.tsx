@@ -286,14 +286,7 @@ export function GiftCardsSection() {
                 <p className="text-[0.72rem] text-ember font-ui mb-3">{redeemError}</p>
               )}
               <p className="font-body text-[0.72rem] text-muted-warm italic mb-5">
-                Save a gift card code here to apply it at checkout. Try{" "}
-                <button
-                  onClick={() => setRedeemCode("LO-GC-DEMO-TEST")}
-                  className="text-gold-bright underline underline-offset-2 hover:text-gold"
-                >
-                  LO-GC-DEMO-TEST
-                </button>{" "}
-                for a demo $25 card (server-side seeded).
+                Enter your gift card code here to save and apply its balance at checkout.
               </p>
 
               {/* Saved cards */}

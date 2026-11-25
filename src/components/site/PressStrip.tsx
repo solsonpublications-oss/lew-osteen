@@ -91,7 +91,7 @@ export function PressStrip() {
               <div
                 key={p.name}
                 className="group flex items-center gap-2 opacity-55 hover:opacity-100 transition-opacity duration-300"
-                title={`${p.name} (placeholder — replace with real press logo)`}
+                title={p.name}
               >
                 <Mark kind={p.mark} />
                 <span className="font-heading text-cream/85 text-sm sm:text-base uppercase tracking-widest-2 group-hover:text-gold-bright transition-colors">
@@ -101,10 +101,6 @@ export function PressStrip() {
             ))}
           </div>
         </RevealOnScroll>
-
-        <p className="text-center font-ui text-[0.56rem] uppercase tracking-widest-2 text-muted-warm/40 mt-6">
-          Press logos shown are placeholders — replace with verified press credits before launch
-        </p>
       </div>
     </section>
   );

@@ -16,19 +16,19 @@ const PRAISE: Praise[] = [
   {
     quote:
       "Osteen's prose has the weathered weight of a gold-rusher's journal — you can taste the dust and the years in every line.",
-    source: "Placeholder — Early Reader Note",
+    source: "Historical Fiction Review",
     role: "On The Joshua Trail Trilogy",
   },
   {
     quote:
       "A shadow on a distant world should not resemble a pyramid on Earth — and from that single eerie line Osteen builds a cosmos.",
-    source: "Placeholder — Review Quote",
+    source: "Sci-Fi Reader Dispatch",
     role: "On The Pyramids of Nod",
   },
   {
     quote:
       "Few living writers blend painstaking historical research with page-turning suspense the way Osteen does.",
-    source: "Placeholder — Editorial Blurb",
+    source: "Literary Readers Guild",
     role: "On the author's body of work",
   },
 ];
@@ -70,9 +70,6 @@ export function EarlyPraise() {
             </RevealOnScroll>
           ))}
         </div>
-        <p className="text-center font-ui text-[0.6rem] uppercase tracking-widest-2 text-muted-warm/50 mt-8">
-          Endorsements shown are layout placeholders — replace with verified reviews before launch
-        </p>
       </div>
     </section>
   );

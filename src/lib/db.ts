@@ -14,23 +14,27 @@ function initDatabaseEnv() {
 
   if (isServerless) {
     const tmpDbPath = path.join("/tmp", "custom.db");
-    if (!fs.existsSync(tmpDbPath)) {
-      // Find the bundled custom.db file from the build package
-      const candidateLocations = [
-        path.join(process.cwd(), "db", "custom.db"),
-        path.join(process.cwd(), "custom.db"),
-        path.resolve("./db/custom.db"),
-      ];
-      for (const loc of candidateLocations) {
-        if (fs.existsSync(loc)) {
-          try {
-            fs.copyFileSync(loc, tmpDbPath);
-            console.log(`[db] Successfully copied sqlite database from ${loc} to ${tmpDbPath}`);
-            break;
-          } catch (e) {
-            console.warn("[db] Failed to copy bundled db to /tmp:", e);
-          }
+    const candidateLocations = [
+      path.join(process.cwd(), "db", "custom.db"),
+      path.join(process.cwd(), "custom.db"),
+      path.resolve("./db/custom.db"),
+    ];
+    let sourceLoc: string | null = null;
+    for (const loc of candidateLocations) {
+      if (fs.existsSync(loc)) {
+        sourceLoc = loc;
+        break;
+      }
+    }
+
+    if (sourceLoc) {
+      try {
+        if (!fs.existsSync(tmpDbPath) || fs.statSync(sourceLoc).mtimeMs > fs.statSync(tmpDbPath).mtimeMs) {
+          fs.copyFileSync(sourceLoc, tmpDbPath);
+          console.log(`[db] Successfully synced database from ${sourceLoc} to ${tmpDbPath}`);
         }
+      } catch (e) {
+        console.warn("[db] Failed to copy bundled db to /tmp:", e);
       }
     }
     process.env.DATABASE_URL = `file:${tmpDbPath}`;

@@ -150,25 +150,8 @@ export function lookupGiftCard(code: string): GiftCard | undefined {
 }
 
 // ============================================================
-// Demo / dev helper: pre-issue a few gift cards so the redeem
-// flow is testable without a prior purchase. These are seeded
-// on first import in dev mode only.
+// Gift Cards seeding helper (no-op in production)
 // ============================================================
-let demoSeeded = false;
 export function seedDemoGiftCards(): void {
-  if (demoSeeded) return;
-  demoSeeded = true;
-  const demoCards: Array<{ amountCents: number; issuedTo: string; notes?: string }> = [
-    { amountCents: 2500, issuedTo: "demo@lewosteen.com", notes: "Demo gift card for testing" },
-    { amountCents: 1000, issuedTo: "demo@lewosteen.com", notes: "Demo gift card for testing" },
-  ];
-  for (const c of demoCards) {
-    issueGiftCard(c);
-  }
-  // Log the demo codes so they're visible in the dev console.
-  console.log("[GiftCards:DEMO] Seeded demo gift cards:");
-  for (const c of demoCards) {
-    const card = issueGiftCard(c);
-    console.log(`  ${card.code} — $${(card.amountCents / 100).toFixed(2)}`);
-  }
+  // Demo gift cards disabled — real gift cards are created upon purchase
 }

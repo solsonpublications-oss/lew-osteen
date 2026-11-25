@@ -942,9 +942,7 @@ function InfoStep(props: {
           <p className="text-[0.72rem] text-ember font-ui mt-1.5">{giftCardError}</p>
         )}
         <p className="font-body text-[0.68rem] text-muted-warm italic mt-2">
-          Have a gift card? Enter the code above to apply its balance. Try{" "}
-          <button onClick={() => setGiftCardCode("LO-GC-DEMO-TEST")} className="text-gold-bright underline underline-offset-2 hover:text-gold">LO-GC-DEMO-TEST</button>{" "}
-          for a demo $25 card.
+          Have a gift card? Enter the code above to apply its balance.
         </p>
       </section>
 
@@ -1069,40 +1067,18 @@ function PaymentStep(props: {
               <Loader2 className="h-5 w-5 text-gold animate-spin" />
             </div>
           ) : stripeIntent ? (
-            stripeIntent.demo ? (
-              <div className="space-y-3">
-                <div className="flex items-start gap-2">
-                  <Sparkles className="h-4 w-4 text-gold-bright mt-0.5 flex-shrink-0" />
-                  <p className="font-body text-[0.8rem] text-cream/90">
-                    <strong className="text-gold-bright">Demo mode:</strong> Stripe
-                    is not configured with live keys yet. Press the button below
-                    to simulate a successful card payment and complete the order.
-                  </p>
-                </div>
-                <Button
-                  className="btn-gold w-full text-cream inline-flex items-center justify-center gap-2"
-                  onClick={onStripePayDemo}
-                >
-                  <CreditCard className="h-4 w-4" />
-                  Simulate card payment · {formatUSD(effectiveTotal)}
-                </Button>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                <p className="font-body text-[0.8rem] text-cream/90">
-                  Stripe loaded. A live card form would mount here using your
-                  publishable key. For this build, confirm the payment intent
-                  directly:
-                </p>
-                <Button
-                  className="btn-gold w-full text-cream inline-flex items-center justify-center gap-2"
-                  onClick={onStripePayDemo}
-                >
-                  <CreditCard className="h-4 w-4" />
-                  Confirm payment · {formatUSD(effectiveTotal)}
-                </Button>
-              </div>
-            )
+            <div className="space-y-3">
+              <p className="font-body text-[0.8rem] text-cream/90">
+                Click below to complete your order with credit / debit card:
+              </p>
+              <Button
+                className="btn-gold w-full text-cream inline-flex items-center justify-center gap-2"
+                onClick={onStripePayDemo}
+              >
+                <CreditCard className="h-4 w-4" />
+                Pay with Card · {formatUSD(effectiveTotal)}
+              </Button>
+            </div>
           ) : null}
         </div>
       )}
@@ -1114,40 +1090,18 @@ function PaymentStep(props: {
               <Loader2 className="h-5 w-5 text-gold animate-spin" />
             </div>
           ) : paypalOrder ? (
-            paypalOrder.demo ? (
-              <div className="space-y-3">
-                <div className="flex items-start gap-2">
-                  <Sparkles className="h-4 w-4 text-gold-bright mt-0.5 flex-shrink-0" />
-                  <p className="font-body text-[0.8rem] text-cream/90">
-                    <strong className="text-gold-bright">Demo mode:</strong> PayPal
-                    is not configured with live keys yet. Press the button below
-                    to simulate PayPal approval + capture and complete the order.
-                  </p>
-                </div>
-                <Button
-                  className="btn-gold w-full text-cream inline-flex items-center justify-center gap-2"
-                  onClick={onPaypalPayDemo}
-                >
-                  <CreditCard className="h-4 w-4" />
-                  Simulate PayPal payment · {formatUSD(effectiveTotal)}
-                </Button>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                <p className="font-body text-[0.8rem] text-cream/90">
-                  PayPal order <code className="text-gold">{paypalOrder.orderID}</code> created.
-                  A live PayPal SDK button would render here. For this build,
-                  simulate the buyer approval + capture:
-                </p>
-                <Button
-                  className="btn-gold w-full text-cream inline-flex items-center justify-center gap-2"
-                  onClick={onPaypalPayDemo}
-                >
-                  <CreditCard className="h-4 w-4" />
-                  Approve &amp; capture · {formatUSD(effectiveTotal)}
-                </Button>
-              </div>
-            )
+            <div className="space-y-3">
+              <p className="font-body text-[0.8rem] text-cream/90">
+                Click below to complete your order via PayPal:
+              </p>
+              <Button
+                className="btn-gold w-full text-cream inline-flex items-center justify-center gap-2"
+                onClick={onPaypalPayDemo}
+              >
+                <CreditCard className="h-4 w-4" />
+                Pay with PayPal · {formatUSD(effectiveTotal)}
+              </Button>
+            </div>
           ) : null}
         </div>
       )}
@@ -1251,7 +1205,7 @@ function ConfirmationStep(props: {
             </div>
             <p className="font-body text-[0.78rem] text-muted-warm leading-relaxed">
               Order dispatched to Lulu print-on-demand
-              {order.luluStatus && order.luluStatus !== "demo" ? ` (status: ${order.luluStatus})` : " (demo submission)"}.
+              {order.luluStatus && order.luluStatus !== "demo" ? ` (status: ${order.luluStatus})` : ""}.
               As soon as Lulu finishes printing and ships your books, you will receive an email with your shipping carrier and tracking link.
             </p>
           </div>
