@@ -16,67 +16,86 @@ const DOWNLOAD_ASSETS = [
 ];
 
 export async function GET(req: NextRequest) {
-  const url = new URL(req.url);
-  const provided = (url.searchParams.get("key") || "").trim();
-  const configuredKey = (process.env.ADMIN_KEY || "").trim();
+  try {
+    const url = new URL(req.url);
+    const provided = (url.searchParams.get("key") || "").trim();
+    const configuredKey = (process.env.ADMIN_KEY || "").trim();
 
-  // Accept configured ADMIN_KEY or the standard dev key
-  const isValid =
-    (configuredKey && provided === configuredKey) ||
-    provided === DEFAULT_DEV_KEY;
+    // Accept configured ADMIN_KEY or the standard dev key
+    const isValid =
+      (configuredKey && provided === configuredKey) ||
+      provided === DEFAULT_DEV_KEY;
 
-  if (!provided || !isValid) {
-    return NextResponse.json(
-      { ok: false, error: "Unauthorized. Invalid admin key." },
-      { status: 401 }
+    if (!provided || !isValid) {
+      return NextResponse.json(
+        { ok: false, error: "Unauthorized. Invalid admin key." },
+        { status: 401 }
+      );
+    }
+
+    // Pull subscribers, messages, orders + counts in parallel with safe fallbacks
+    let subscribers: any[] = [];
+    let messages: any[] = [];
+    let orders: any[] = [];
+    let subCount = 0;
+    let msgCount = 0;
+    let orderCount = 0;
+    let downloadGroups: any[] = [];
+    let revenueCents = 0;
+
+    try {
+      const [
+        s,
+        m,
+        o,
+        sc,
+        mc,
+        oc,
+        dg,
+        rev,
+      ] = await Promise.all([
+        db.subscriber.findMany({ orderBy: { createdAt: "desc" }, take: 500 }).catch(() => []),
+        db.contactMessage.findMany({ orderBy: { createdAt: "desc" }, take: 500 }).catch(() => []),
+        db.order.findMany({
+          orderBy: { createdAt: "desc" },
+          take: 200,
+          include: { items: true },
+        }).catch(() => []),
+        db.subscriber.count().catch(() => 0),
+        db.contactMessage.count().catch(() => 0),
+        db.order.count().catch(() => 0),
+        db.downloadEvent.groupBy({
+          by: ["asset"],
+          _count: { _all: true },
+        }).catch(() => []),
+        db.order.aggregate({ _sum: { totalCents: true } }).catch(() => ({ _sum: { totalCents: 0 } })),
+      ]);
+
+      subscribers = s || [];
+      messages = m || [];
+      orders = o || [];
+      subCount = sc || 0;
+      msgCount = mc || 0;
+      orderCount = oc || 0;
+      downloadGroups = dg || [];
+      revenueCents = rev?._sum?.totalCents || 0;
+    } catch (queryErr) {
+      console.warn("[/api/admin/data] DB query warning:", queryErr);
+    }
+
+    // Map download counts to the asset labels.
+    const downloadCountMap = new Map<string, number>(
+      downloadGroups.map((g: any) => [g.asset, g._count?._all || 0])
     );
-  }
+    let totalDownloads = 0;
+    const downloads = DOWNLOAD_ASSETS.map((a) => {
+      const count = downloadCountMap.get(a.slug) || 0;
+      totalDownloads += count;
+      return { slug: a.slug, label: a.label, count };
+    });
 
-  // Pull subscribers, messages, orders + counts in parallel.
-  const [
-    subscribers,
-    messages,
-    orders,
-    subCount,
-    msgCount,
-    orderCount,
-    downloadGroups,
-    revenueAgg,
-  ] = await Promise.all([
-    db.subscriber.findMany({ orderBy: { createdAt: "desc" }, take: 500 }),
-    db.contactMessage.findMany({ orderBy: { createdAt: "desc" }, take: 500 }),
-    db.order.findMany({
-      orderBy: { createdAt: "desc" },
-      take: 200,
-      include: { items: true },
-    }),
-    db.subscriber.count(),
-    db.contactMessage.count(),
-    db.order.count(),
-    db.downloadEvent.groupBy({
-      by: ["asset"],
-      _count: { _all: true },
-    }),
-    // Aggregate total revenue across ALL orders (not just the 200 we display).
-    db.order.aggregate({ _sum: { totalCents: true } }),
-  ]);
-
-  // Map download counts to the asset labels.
-  const downloadCountMap = new Map<string, number>(
-    downloadGroups.map((g) => [g.asset, g._count._all])
-  );
-  let totalDownloads = 0;
-  const downloads = DOWNLOAD_ASSETS.map((a) => {
-    const count = downloadCountMap.get(a.slug) || 0;
-    totalDownloads += count;
-    return { slug: a.slug, label: a.label, count };
-  });
-
-  // Orders revenue summary — from the authoritative aggregate, not the
-  // capped display list, so the dashboard total always matches reality.
-  const revenueCents = revenueAgg._sum.totalCents || 0;
-  const ebookOrders = orders.filter((o) => o.hasDigital).length;
-  const printOrders = orders.filter((o) => o.hasPrint).length;
+    const ebookOrders = orders.filter((o: any) => o.hasDigital).length;
+    const printOrders = orders.filter((o: any) => o.hasPrint).length;
 
   return NextResponse.json({
     ok: true,
@@ -119,7 +138,7 @@ export async function GET(req: NextRequest) {
       trackingUrl: o.trackingUrl,
       notes: o.notes,
       createdAt: o.createdAt,
-      items: o.items.map((it) => ({
+      items: (o.items || []).map((it: any) => ({
         bookTitle: it.bookTitle,
         bookSlug: it.bookSlug,
         format: it.format,
@@ -129,4 +148,11 @@ export async function GET(req: NextRequest) {
       })),
     })),
   });
+  } catch (err: any) {
+    console.error("[/api/admin/data] Unhandled error:", err);
+    return NextResponse.json(
+      { ok: false, error: err?.message || "Internal server error." },
+      { status: 500 }
+    );
+  }
 }

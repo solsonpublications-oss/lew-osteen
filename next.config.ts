@@ -4,6 +4,9 @@ import path from "node:path";
 const nextConfig: NextConfig = {
   output: "standalone",
   outputFileTracingRoot: path.join(__dirname),
+  outputFileTracingIncludes: {
+    "/api/**/*": ["./db/custom.db"],
+  },
   typescript: {
     ignoreBuildErrors: true,
   },
